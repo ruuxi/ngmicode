@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createMemo, type Accessor } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { TextSelection } from "./local"
+import type { FileSelection } from "@/context/file"
 import { persisted } from "@/utils/persist"
 
 interface PartBase {
@@ -18,7 +18,7 @@ export interface TextPart extends PartBase {
 export interface FileAttachmentPart extends PartBase {
   type: "file"
   path: string
-  selection?: TextSelection
+  selection?: FileSelection
 }
 
 export interface AgentPart extends PartBase {
@@ -37,7 +37,23 @@ export interface ImageAttachmentPart {
 export type ContentPart = TextPart | FileAttachmentPart | AgentPart | ImageAttachmentPart
 export type Prompt = ContentPart[]
 
+export type FileContextItem = {
+  type: "file"
+  path: string
+  selection?: FileSelection
+}
+
+export type ContextItem = FileContextItem
+
 export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
+
+function isSelectionEqual(a?: FileSelection, b?: FileSelection) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return (
+    a.startLine === b.startLine && a.startChar === b.startChar && a.endLine === b.endLine && a.endChar === b.endChar
+  )
+}
 
 export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
   if (promptA.length !== promptB.length) return false
@@ -48,8 +64,11 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
     if (partA.type === "text" && partA.content !== (partB as TextPart).content) {
       return false
     }
-    if (partA.type === "file" && partA.path !== (partB as FileAttachmentPart).path) {
-      return false
+    if (partA.type === "file") {
+      const fileA = partA as FileAttachmentPart
+      const fileB = partB as FileAttachmentPart
+      if (fileA.path !== fileB.path) return false
+      if (!isSelectionEqual(fileA.selection, fileB.selection)) return false
     }
     if (partA.type === "agent" && partA.name !== (partB as AgentPart).name) {
       return false
@@ -61,7 +80,7 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
   return true
 }
 
-function cloneSelection(selection?: TextSelection) {
+function cloneSelection(selection?: FileSelection) {
   if (!selection) return undefined
   return { ...selection }
 }
@@ -91,6 +110,10 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext<
 type PromptEntry = {
   prompt: Prompt
   cursor?: number
+  context: {
+    activeTab: boolean
+    items: (ContextItem & { key: string })[]
+  }
 }
 
 type PromptStore = {
@@ -101,7 +124,18 @@ function createDefaultEntry(): PromptEntry {
   return {
     prompt: clonePrompt(DEFAULT_PROMPT),
     cursor: undefined,
+    context: {
+      activeTab: true,
+      items: [],
+    },
   }
+}
+
+function keyForItem(item: ContextItem) {
+  if (item.type !== "file") return item.type
+  const start = item.selection?.startLine
+  const end = item.selection?.endLine
+  return `${item.type}:${item.path}:${start}:${end}`
 }
 
 function createPromptContext(paneId?: string | Accessor<string | undefined>) {
@@ -159,10 +193,49 @@ function createPromptMethods(
     current: createMemo(() => currentPrompt()),
     cursor: createMemo(() => currentEntry().cursor),
     dirty: createMemo(() => !isPromptEqual(currentPrompt(), DEFAULT_PROMPT)),
+    context: {
+      activeTab: createMemo(() => currentEntry().context.activeTab),
+      items: createMemo(() => currentEntry().context.items),
+      addActive() {
+        updateEntry((entry) => ({
+          ...entry,
+          context: { ...entry.context, activeTab: true },
+        }))
+      },
+      removeActive() {
+        updateEntry((entry) => ({
+          ...entry,
+          context: { ...entry.context, activeTab: false },
+        }))
+      },
+      add(item: ContextItem) {
+        const key = keyForItem(item)
+        updateEntry((entry) => {
+          if (entry.context.items.find((x) => x.key === key)) return entry
+          return {
+            ...entry,
+            context: {
+              ...entry.context,
+              items: [...entry.context.items, { key, ...item }],
+            },
+          }
+        })
+      },
+      remove(key: string) {
+        updateEntry((entry) => ({
+          ...entry,
+          context: {
+            ...entry.context,
+            items: entry.context.items.filter((x) => x.key !== key),
+          },
+        }))
+      },
+    },
     set(prompt: Prompt, cursorPosition?: number) {
       const next = clonePrompt(prompt)
       batch(() => {
         updateEntry((entry) => ({
+          ...entry,
           prompt: next,
           cursor: cursorPosition !== undefined ? cursorPosition : entry.cursor,
         }))
@@ -170,7 +243,8 @@ function createPromptMethods(
     },
     reset() {
       batch(() => {
-        updateEntry(() => ({
+        updateEntry((entry) => ({
+          ...entry,
           prompt: clonePrompt(DEFAULT_PROMPT),
           cursor: 0,
         }))
