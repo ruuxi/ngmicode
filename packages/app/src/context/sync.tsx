@@ -1,4 +1,4 @@
-import { batch, createEffect, createMemo, createSignal } from "solid-js"
+import { batch, createMemo } from "solid-js"
 import { produce, reconcile } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
@@ -16,19 +16,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const store = createMemo(() => child()[0])
     const setStore = (...args: [any, ...any[]]) => (child()[1] as (...args: any[]) => void)(...args)
     const absolute = (path: string) => (store().path.directory + "/" + path).replace("//", "/")
-    const [hasReady, setHasReady] = createSignal(false)
-
-    createEffect(() => {
-      if (store().ready) setHasReady(true)
-    })
 
     return {
       get data() {
         return store()
       },
       set: setStore,
+      get status() {
+        return store.status
+      },
       get ready() {
-        return store().ready || hasReady()
+        return store.status !== "loading"
       },
       get project() {
         const current = store()
