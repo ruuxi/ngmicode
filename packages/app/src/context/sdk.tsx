@@ -11,6 +11,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   init: (props: { directory: string }) => {
     const platform = usePlatform()
     const globalSDK = useGlobalSDK()
+
     const emitter = createGlobalEmitter<{
       [key in Event["type"]]: Extract<Event, { type: key }>
     }>()
@@ -18,7 +19,6 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     const createClient = (directory: string, url: string) =>
       createOpencodeClient({
         baseUrl: url,
-        signal: AbortSignal.timeout(1000 * 60 * 10),
         fetch: platform.fetch,
         directory,
         throwOnError: true,
