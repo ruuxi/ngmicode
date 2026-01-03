@@ -7,6 +7,7 @@ import { LocalProvider } from "@/context/local"
 import { base64Decode } from "@opencode-ai/util/encode"
 import { DataProvider } from "@opencode-ai/ui/context"
 import { iife } from "@opencode-ai/util/iife"
+import { useGlobalSDK } from "@/context/global-sdk"
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
@@ -20,14 +21,33 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
-            const respond = (input: {
+            const globalSDK = useGlobalSDK()
+
+            const respondToPermission = (input: {
               sessionID: string
               permissionID: string
               response: "once" | "always" | "reject"
             }) => sdk.client.permission.respond(input)
 
+            const respondToAskUser = async (input: { requestID: string; answers: Record<string, string> }) => {
+              const response = await fetch(`${globalSDK.url}/askuser/${input.requestID}/reply`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-opencode-directory": directory(),
+                },
+                body: JSON.stringify({ answers: input.answers }),
+              })
+              return response.json()
+            }
+
             return (
-              <DataProvider data={sync.data} directory={directory()} onPermissionRespond={respond}>
+              <DataProvider
+                data={sync.data}
+                directory={directory()}
+                onPermissionRespond={respondToPermission}
+                onAskUserRespond={respondToAskUser}
+              >
                 <LocalProvider>{props.children}</LocalProvider>
               </DataProvider>
             )

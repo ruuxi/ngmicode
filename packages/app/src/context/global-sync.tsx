@@ -27,6 +27,19 @@ import { batch, createContext, useContext, onMount, type ParentProps, Switch, Ma
 import { showToast } from "@opencode-ai/ui/toast"
 import { getFilename } from "@opencode-ai/util/path"
 
+export type AskUserQuestionRequest = {
+  id: string
+  sessionID: string
+  messageID: string
+  callID: string
+  questions: Array<{
+    question: string
+    header: string
+    options: Array<{ label: string; description: string }>
+    multiSelect: boolean
+  }>
+}
+
 type State = {
   ready: boolean
   agent: Agent[]
@@ -47,6 +60,9 @@ type State = {
   }
   permission: {
     [sessionID: string]: PermissionRequest[]
+  }
+  askuser: {
+    [sessionID: string]: AskUserQuestionRequest[]
   }
   mcp: {
     [name: string]: McpStatus
@@ -96,6 +112,7 @@ function createGlobalSync() {
         session_diff: {},
         todo: {},
         permission: {},
+        askuser: {},
         mcp: {},
         lsp: [],
         vcs: undefined,
@@ -395,6 +412,45 @@ function createGlobalSync() {
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break
       }
+    }
+
+    // Handle AskUserQuestion events (not in typed SDK events)
+    const eventType = (event as unknown as { type: string }).type
+    if (eventType === "askuser.asked") {
+      const props = (event as unknown as { properties: AskUserQuestionRequest }).properties
+      const sessionID = props.sessionID
+      const questions = store.askuser[sessionID]
+      if (!questions) {
+        setStore("askuser", sessionID, [props])
+        return
+      }
+
+      const result = Binary.search(questions, props.id, (q) => q.id)
+      if (result.found) {
+        setStore("askuser", sessionID, result.index, reconcile(props))
+        return
+      }
+
+      setStore(
+        "askuser",
+        sessionID,
+        produce((draft) => {
+          draft.splice(result.index, 0, props)
+        }),
+      )
+    } else if (eventType === "askuser.replied") {
+      const props = (event as unknown as { properties: { sessionID: string; requestID: string } }).properties
+      const questions = store.askuser[props.sessionID]
+      if (!questions) return
+      const result = Binary.search(questions, props.requestID, (q) => q.id)
+      if (!result.found) return
+      setStore(
+        "askuser",
+        props.sessionID,
+        produce((draft) => {
+          draft.splice(result.index, 1)
+        }),
+      )
     }
   })
 

@@ -46,6 +46,8 @@ import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors } from "./error"
 import { Pty } from "@/pty"
 import { PermissionNext } from "@/permission/next"
+import { AskUserQuestion } from "@/session/ask-user-question"
+import { Skill } from "@/skill/skill"
 import { Installation } from "@/installation"
 import { MDNS } from "./mdns"
 
@@ -474,6 +476,29 @@ export namespace Server {
           return c.json(config)
         },
       )
+
+      .get(
+        "/skill",
+        describeRoute({
+          summary: "List skills",
+          description: "Get a list of all available skills from project and global directories.",
+          operationId: "skill.list",
+          responses: {
+            200: {
+              description: "List of skills",
+              content: {
+                "application/json": {
+                  schema: resolver(Skill.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(await Skill.all())
+        },
+      )
+
       .get(
         "/experimental/tool/ids",
         describeRoute({
@@ -1610,6 +1635,96 @@ export namespace Server {
         async (c) => {
           const permissions = await PermissionNext.list()
           return c.json(permissions)
+        },
+      )
+      // AskUserQuestion endpoints
+      .post(
+        "/askuser/:requestID/reply",
+        describeRoute({
+          summary: "Reply to AskUserQuestion",
+          description: "Submit answers to a pending AskUserQuestion request from Claude.",
+          operationId: "askuser.reply",
+          responses: {
+            200: {
+              description: "Answers submitted successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            requestID: z.string(),
+          }),
+        ),
+        validator("json", z.object({ answers: z.record(z.string(), z.string()) })),
+        async (c) => {
+          const params = c.req.valid("param")
+          const json = c.req.valid("json")
+          const success = AskUserQuestion.reply({
+            requestID: params.requestID,
+            answers: json.answers,
+          })
+          if (!success) {
+            return c.json({ error: "Request not found" }, 404)
+          }
+          return c.json(true)
+        },
+      )
+      .get(
+        "/askuser",
+        describeRoute({
+          summary: "List pending AskUserQuestion requests",
+          description: "Get all pending AskUserQuestion requests across all sessions.",
+          operationId: "askuser.list",
+          responses: {
+            200: {
+              description: "List of pending questions",
+              content: {
+                "application/json": {
+                  schema: resolver(AskUserQuestion.Request.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const questions = AskUserQuestion.list()
+          return c.json(questions)
+        },
+      )
+      .get(
+        "/session/:sessionID/askuser",
+        describeRoute({
+          summary: "List pending AskUserQuestion for session",
+          description: "Get pending AskUserQuestion requests for a specific session.",
+          operationId: "askuser.listForSession",
+          responses: {
+            200: {
+              description: "List of pending questions for session",
+              content: {
+                "application/json": {
+                  schema: resolver(AskUserQuestion.Request.array()),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const params = c.req.valid("param")
+          const questions = AskUserQuestion.listForSession(params.sessionID)
+          return c.json(questions)
         },
       )
       .get(

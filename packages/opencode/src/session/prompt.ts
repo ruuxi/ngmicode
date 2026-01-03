@@ -532,18 +532,62 @@ export namespace SessionPrompt {
           sessionID,
         })) as MessageV2.Assistant
 
-        // Extract prompt text from user message parts
+        // Extract prompt text and images from user message parts
         const userParts = await MessageV2.parts(lastUser.id)
         const promptText = userParts
           .filter((p): p is MessageV2.TextPart => p.type === "text")
           .map((p) => p.text)
           .join("\n")
 
+        // Extract image file parts
+        const imageParts = userParts.filter(
+          (p): p is MessageV2.FilePart => p.type === "file" && p.mime.startsWith("image/"),
+        )
+
+        // Convert image parts to ImageInput format for the SDK
+        const images: ClaudeAgentProcessor.ImageInput[] = []
+        for (const part of imageParts) {
+          try {
+            const url = new URL(part.url)
+            let base64Data: string
+
+            if (url.protocol === "data:") {
+              // Already a data URL - extract base64 data
+              const match = part.url.match(/^data:[^;]+;base64,(.+)$/)
+              if (match) {
+                base64Data = match[1]
+              } else {
+                continue
+              }
+            } else if (url.protocol === "file:") {
+              // File URL - read and convert to base64
+              const filepath = fileURLToPath(part.url)
+              const file = Bun.file(filepath)
+              const bytes = await file.bytes()
+              base64Data = Buffer.from(bytes).toString("base64")
+            } else {
+              continue
+            }
+
+            // Map mime type to SDK-supported types
+            const mediaType = part.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+            if (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(part.mime)) {
+              images.push({
+                data: base64Data,
+                mediaType,
+              })
+            }
+          } catch (e) {
+            log.warn("failed to process image part", { url: part.url, error: e })
+          }
+        }
+
         try {
           const result = await ClaudeAgentProcessor.process({
             sessionID,
             assistantMessage,
             prompt: promptText,
+            images: images.length > 0 ? images : undefined,
             agent,
             abort,
           })

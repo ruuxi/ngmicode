@@ -36,6 +36,7 @@ import { Checkbox } from "./checkbox"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
+import { AskUserQuestion } from "./ask-user-question"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { createAutoScroll } from "../hooks"
@@ -423,6 +424,8 @@ export interface ToolProps {
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
+  sessionID?: string
+  callID?: string
 }
 
 export type ToolComponent = Component<ToolProps>
@@ -535,6 +538,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             hideDetails={props.hideDetails}
             forceOpen={forceOpen()}
             defaultOpen={props.defaultOpen}
+            sessionID={props.message.sessionID}
+            callID={part.callID}
           />
         </Match>
       </Switch>
@@ -1004,5 +1009,12 @@ ToolRegistry.register({
         </Show>
       </BasicTool>
     )
+  },
+})
+
+ToolRegistry.register({
+  name: "AskUserQuestion",
+  render(props) {
+    return <AskUserQuestion {...props} />
   },
 })

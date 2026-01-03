@@ -1,5 +1,5 @@
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { createEffect, on, Component, Show, For, onMount, onCleanup, Switch, Match, createMemo } from "solid-js"
+import { createEffect, on, Component, Show, For, onMount, onCleanup, Switch, Match, createMemo, createSignal, createResource } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
@@ -22,9 +22,11 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Select } from "@opencode-ai/ui/select"
+import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
+import { SettingsPopover } from "@/components/settings-popover"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
@@ -35,6 +37,12 @@ import { usePermission } from "@/context/permission"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
+
+interface SkillInfo {
+  name: string
+  description: string
+  location: string
+}
 
 interface PromptInputProps {
   class?: string
@@ -75,7 +83,7 @@ interface SlashCommand {
   title: string
   description?: string
   keybind?: string
-  type: "builtin" | "custom"
+  type: "builtin" | "custom" | "skill"
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -369,6 +377,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onSelect: handleAtSelect,
   })
 
+  // Fetch skills from the API
+  const [skills] = createResource(async () => {
+    try {
+      const response = await fetch(`${sdk.url}/skill?directory=${encodeURIComponent(sdk.directory)}`)
+      if (!response.ok) return []
+      return (await response.json()) as SkillInfo[]
+    } catch {
+      return []
+    }
+  })
+
   const slashCommands = createMemo<SlashCommand[]>(() => {
     const builtin = command.options
       .filter((opt) => !opt.disabled && !opt.id.startsWith("suggested.") && opt.slash)
@@ -389,14 +408,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       type: "custom" as const,
     }))
 
-    return [...custom, ...builtin]
+    // Add skills as slash commands
+    const skillCommands = (skills() ?? []).map((skill) => ({
+      id: `skill.${skill.name}`,
+      trigger: skill.name,
+      title: skill.name,
+      description: skill.description,
+      type: "skill" as const,
+    }))
+
+    return [...skillCommands, ...custom, ...builtin]
   })
 
   const handleSlashSelect = (cmd: SlashCommand | undefined) => {
     if (!cmd) return
     setStore("popover", null)
 
-    if (cmd.type === "custom") {
+    if (cmd.type === "custom" || cmd.type === "skill") {
       const text = `/${cmd.trigger} `
       editorRef.innerHTML = ""
       editorRef.textContent = text
@@ -883,6 +911,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    // Tab to cycle through agents (only when not in popover mode)
+    if (event.key === "Tab" && !event.shiftKey && !store.popover && store.mode === "normal") {
+      event.preventDefault()
+      local.agent.move(1)
+      return
+    }
+
     if (event.key === "Backspace") {
       const selection = window.getSelection()
       if (selection && selection.isCollapsed) {
@@ -1484,15 +1519,41 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <TooltipKeybind placement="top" title="Cycle agent" keybind={command.keybind("agent.cycle")}>
-                  <Select
-                    options={local.agent.list().map((agent) => agent.name)}
-                    current={local.agent.current()?.name ?? ""}
-                    onSelect={local.agent.set}
-                    class="capitalize"
-                    variant="ghost"
-                  />
-                </TooltipKeybind>
+                <DropdownMenu placement="top-start">
+                  <DropdownMenu.Trigger>
+                    <TooltipKeybind placement="top" title="Cycle agent (Tab)" keybind={command.keybind("agent.cycle")}>
+                      <Button variant="ghost" class="gap-1.5 capitalize">
+                        <Icon name="brain" size="small" class="text-icon-info-active" />
+                        {local.agent.current()?.name ?? "Build"}
+                        <Icon name="chevron-down" size="small" />
+                      </Button>
+                    </TooltipKeybind>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content class="min-w-48 p-1">
+                      <For each={local.agent.list()}>
+                        {(agent) => (
+                          <DropdownMenu.Item
+                            onSelect={() => local.agent.set(agent.name)}
+                            class="flex flex-col items-start gap-0.5 px-2 py-1.5 rounded cursor-pointer"
+                            classList={{
+                              "bg-surface-base-hover": local.agent.current()?.name === agent.name,
+                            }}
+                          >
+                            <span class="capitalize text-13-medium text-text-strong">{agent.name}</span>
+                            <Show when={agent.description}>
+                              <span class="text-12-regular text-text-weak">{agent.description}</span>
+                            </Show>
+                          </DropdownMenu.Item>
+                        )}
+                      </For>
+                      <DropdownMenu.Separator class="my-1 h-px bg-border-base" />
+                      <div class="px-2 py-1 text-11-regular text-text-subtle">
+                        Press Tab to cycle
+                      </div>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu>
                 <Show
                   when={providers.paid().length > 0}
                   fallback={
@@ -1528,29 +1589,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </Button>
                   </TooltipKeybind>
                 </Show>
-                <Show when={permission.permissionsEnabled() && params.id}>
-                  <TooltipKeybind
-                    placement="top"
-                    title="Auto-accept edits"
-                    keybind={command.keybind("permissions.autoaccept")}
-                  >
-                    <Button
-                      variant="ghost"
-                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                      classList={{
-                        "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                        "text-text-base": !permission.isAutoAccepting(params.id!),
-                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!),
-                      }}
-                    >
-                      <Icon
-                        name="chevron-double-right"
-                        size="small"
-                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!) }}
-                      />
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
+                <SettingsPopover />
               </Match>
             </Switch>
           </div>

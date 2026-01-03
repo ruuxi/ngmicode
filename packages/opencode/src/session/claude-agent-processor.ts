@@ -1,6 +1,14 @@
-import { query, type SDKMessage, type PermissionMode } from "@anthropic-ai/claude-agent-sdk"
+import {
+  query,
+  type SDKMessage,
+  type PermissionMode,
+  type SDKUserMessage,
+  type CanUseTool,
+  type PermissionResult,
+} from "@anthropic-ai/claude-agent-sdk"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
+import { AskUserQuestion } from "./ask-user-question"
 import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
@@ -125,10 +133,16 @@ export namespace ClaudeAgentProcessor {
     return undefined
   }
 
+  export interface ImageInput {
+    data: string // base64 encoded image data
+    mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+  }
+
   export interface ProcessInput {
     sessionID: string
     assistantMessage: MessageV2.Assistant
     prompt: string
+    images?: ImageInput[]
     agent: Agent.Info
     abort: AbortSignal
   }
@@ -138,6 +152,50 @@ export namespace ClaudeAgentProcessor {
     messageID: string
     toolParts: Map<string, MessageV2.ToolPart>
     agentSessionID?: string
+  }
+
+  /**
+   * Create a multimodal prompt with images for the SDK
+   * Returns an async iterable that yields a single SDKUserMessage
+   */
+  async function* createMultimodalPrompt(
+    text: string,
+    images: ImageInput[],
+    sessionID: string,
+  ): AsyncIterable<SDKUserMessage> {
+    const content: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+    > = []
+
+    // Add image blocks first
+    for (const image of images) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: image.mediaType,
+          data: image.data,
+        },
+      })
+    }
+
+    // Add text block
+    content.push({
+      type: "text",
+      text,
+    })
+
+    // SDKUserMessage format requires wrapping the API message
+    yield {
+      type: "user",
+      session_id: sessionID,
+      parent_tool_use_id: null,
+      message: {
+        role: "user",
+        content,
+      },
+    } as SDKUserMessage
   }
 
   /**
@@ -158,6 +216,61 @@ export namespace ClaudeAgentProcessor {
     if (editRule?.action === "allow") return "acceptEdits"
 
     return "default"
+  }
+
+  /**
+   * Create a canUseTool callback that handles AskUserQuestion specially
+   */
+  function createCanUseTool(ctx: ProcessContext): CanUseTool {
+    return async (toolName, input, options): Promise<PermissionResult> => {
+      // Handle AskUserQuestion specially - wait for user response
+      if (toolName === "AskUserQuestion") {
+        const askInput = input as {
+          questions: Array<{
+            question: string
+            header: string
+            options: Array<{ label: string; description: string }>
+            multiSelect: boolean
+          }>
+        }
+
+        log.info("intercepting AskUserQuestion tool", {
+          sessionID: ctx.sessionID,
+          questionCount: askInput.questions?.length,
+        })
+
+        try {
+          // Wait for user to answer the questions
+          const answers = await AskUserQuestion.ask({
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: options.toolUseID ?? Identifier.ascending("tool"),
+            questions: askInput.questions,
+          })
+
+          // Return the answers in the updated input
+          return {
+            behavior: "allow",
+            updatedInput: {
+              ...input,
+              answers,
+            },
+          }
+        } catch (e) {
+          log.error("AskUserQuestion failed", { error: e })
+          return {
+            behavior: "deny",
+            message: e instanceof Error ? e.message : "Failed to get user response",
+          }
+        }
+      }
+
+      // For all other tools, allow them (permission mode handles the rest)
+      return {
+        behavior: "allow",
+        updatedInput: input,
+      }
+    }
   }
 
   /**
@@ -409,14 +522,24 @@ export namespace ClaudeAgentProcessor {
         abortController.abort()
       })
 
+      // Create prompt - use multimodal format if images are present
+      // For the SDK session_id, use the existing agent session or generate a placeholder
+      const sdkSessionID = existingAgentSessionID ?? crypto.randomUUID()
+      const prompt =
+        input.images && input.images.length > 0
+          ? createMultimodalPrompt(input.prompt, input.images, sdkSessionID)
+          : input.prompt
+
       const generator = query({
-        prompt: input.prompt,
+        prompt,
         options: {
           abortController,
           resume: existingAgentSessionID,
           cwd: Instance.directory,
           permissionMode,
           pathToClaudeCodeExecutable: claudeExecutable,
+          // Handle AskUserQuestion tool specially
+          canUseTool: createCanUseTool(ctx),
           // Pass auth environment variables (OAuth token or API key)
           env: {
             ...globalThis.process.env,
@@ -472,6 +595,8 @@ export namespace ClaudeAgentProcessor {
         throw error
       }
     } finally {
+      // Cancel any pending AskUserQuestion requests for this session
+      AskUserQuestion.cancelSession(input.sessionID)
       SessionStatus.set(input.sessionID, { type: "idle" })
     }
 
