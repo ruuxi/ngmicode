@@ -2,6 +2,19 @@ import type { Message, Session, Part, FileDiff, SessionStatus, PermissionRequest
 import { createSimpleContext } from "./helper"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
+export type AskUserQuestionRequest = {
+  id: string
+  sessionID: string
+  messageID: string
+  callID: string
+  questions: Array<{
+    question: string
+    header: string
+    options: Array<{ label: string; description: string }>
+    multiSelect: boolean
+  }>
+}
+
 type Data = {
   session: Session[]
   session_status: {
@@ -15,6 +28,9 @@ type Data = {
   }
   permission?: {
     [sessionID: string]: PermissionRequest[]
+  }
+  askuser?: {
+    [sessionID: string]: AskUserQuestionRequest[]
   }
   message: {
     [sessionID: string]: Message[]
@@ -30,9 +46,19 @@ export type PermissionRespondFn = (input: {
   response: "once" | "always" | "reject"
 }) => void
 
+export type AskUserRespondFn = (input: {
+  requestID: string
+  answers: Record<string, string>
+}) => void
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
-  init: (props: { data: Data; directory: string; onPermissionRespond?: PermissionRespondFn }) => {
+  init: (props: {
+    data: Data
+    directory: string
+    onPermissionRespond?: PermissionRespondFn
+    onAskUserRespond?: AskUserRespondFn
+  }) => {
     return {
       get store() {
         return props.data
@@ -41,6 +67,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         return props.directory
       },
       respondToPermission: props.onPermissionRespond,
+      respondToAskUser: props.onAskUserRespond,
     }
   },
 })

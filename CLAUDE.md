@@ -8,10 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 bun install
 
-# Run development server (runs in packages/opencode by default)
-bun dev
-bun dev <directory>  # Run against a specific directory
-bun dev .            # Run in repo root
+# Run desktop app in development mode
+bun run tauri dev
 
 # Type checking
 bun turbo typecheck
@@ -19,9 +17,6 @@ bun turbo typecheck
 # Tests (run from packages/opencode, not root)
 cd packages/opencode && bun test
 bun test <file>      # Single test file
-
-# Build standalone executable
-./packages/opencode/script/build.ts --single
 
 # Regenerate SDK after API changes
 ./packages/sdk/js/script/build.ts
@@ -31,10 +26,10 @@ bun test <file>      # Single test file
 
 ## Architecture Overview
 
-OpenCode is an AI coding agent with a **client-server architecture**:
+OpenCode is an AI coding agent with a **client-server architecture**, focused on the desktop app:
 
 - **Server**: Hono HTTP server exposing REST API + SSE for real-time events (`packages/opencode/src/server/`)
-- **TUI**: SolidJS terminal UI using OpenTUI framework (`packages/opencode/src/cli/cmd/tui/`)
+- **Desktop**: Tauri desktop app with SolidJS frontend (`packages/desktop/`)
 - **SDK**: Auto-generated TypeScript client (`packages/sdk/js/`)
 - **Event Bus**: Pub-sub system for component communication (`packages/opencode/src/bus/`)
 
@@ -42,11 +37,12 @@ OpenCode is an AI coding agent with a **client-server architecture**:
 
 | Package | Purpose |
 |---------|---------|
-| `packages/opencode` | Core CLI, server, and business logic |
-| `packages/plugin` | `@opencode-ai/plugin` for custom tools |
+| `packages/opencode` | Core server and business logic |
+| `packages/desktop` | Tauri desktop app (main UI) |
+| `packages/app` | Shared SolidJS app components |
+| `packages/ui` | Shared UI component library |
 | `packages/sdk/js` | Generated TypeScript SDK |
-| `packages/desktop` | Tauri desktop app |
-| `packages/console` | Web console |
+| `packages/plugin` | `@opencode-ai/plugin` for custom tools |
 
 ### Key Source Directories (`packages/opencode/src/`)
 
