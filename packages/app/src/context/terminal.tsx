@@ -22,23 +22,38 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   init: (props) => createTerminalContext(props?.paneId),
 })
 
+type TerminalStore = {
+  active?: string
+  all: LocalPTY[]
+}
+
 function createTerminalContext(paneId?: string) {
   const sdk = useSDK()
   const params = useParams()
-  const name = createMemo(() =>
-    paneId ? `pane/${paneId}/terminal.v1` : `${params.dir}/terminal${params.id ? "/" + params.id : ""}.v1`,
-  )
 
-  const [store, setStore, _, ready] = persisted(
-    name(),
-    createStore<{
-      active?: string
-      all: LocalPTY[]
-    }>({
-      all: [],
-    }),
-  )
+  // For pane-based terminals, don't persist (paneIds are random and would cause orphaned entries)
+  // For single session view, persist by directory/session
+  if (paneId) {
+    return createNonPersistedTerminalContext(sdk)
+  }
 
+  const name = `${params.dir}/terminal${params.id ? "/" + params.id : ""}.v1`
+  const [store, setStore, _, ready] = persisted(name, createStore<TerminalStore>({ all: [] }))
+
+  return createTerminalMethods(sdk, store, setStore, ready)
+}
+
+function createNonPersistedTerminalContext(sdk: ReturnType<typeof useSDK>) {
+  const [store, setStore] = createStore<TerminalStore>({ all: [] })
+  return createTerminalMethods(sdk, store, setStore, () => true)
+}
+
+function createTerminalMethods(
+  sdk: ReturnType<typeof useSDK>,
+  store: TerminalStore,
+  setStore: import("solid-js/store").SetStoreFunction<TerminalStore>,
+  ready: () => boolean,
+) {
   return {
     ready,
     all: createMemo(() => Object.values(store.all)),

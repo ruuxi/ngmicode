@@ -19,7 +19,6 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
-import { iife } from "@opencode-ai/util/iife"
 
 type SessionPaneProps = {
   paneId: string
@@ -116,7 +115,14 @@ function PaneContent(props: ActivePaneProps) {
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
       }}
-      onClick={() => multiPane.setFocused(props.paneId)}
+      onMouseDown={(e) => {
+        // Only focus if clicking non-interactive elements
+        const target = e.target as HTMLElement
+        const isInteractive = target.closest('button, input, select, textarea, [contenteditable], [role="button"]')
+        if (!isInteractive) {
+          multiPane.setFocused(props.paneId)
+        }
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -231,25 +237,29 @@ function PaneContent(props: ActivePaneProps) {
   )
 }
 
-function PaneProviders(props: ActivePaneProps & { children: any }) {
+function SyncedProviders(props: { paneId: string; directory: string; children: any }) {
+  const sync = useSync()
   const sdk = useSDK()
   const respond = (input: { sessionID: string; permissionID: string; response: "once" | "always" | "reject" }) =>
     sdk.client.permission.respond(input)
 
   return (
+    <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
+      <LocalProvider>
+        <TerminalProvider paneId={props.paneId}>
+          <PromptProvider paneId={props.paneId}>{props.children}</PromptProvider>
+        </TerminalProvider>
+      </LocalProvider>
+    </DataProvider>
+  )
+}
+
+function PaneProviders(props: ActivePaneProps & { children: any }) {
+  return (
     <SyncProvider>
-      {iife(() => {
-        const sync = useSync()
-        return (
-          <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
-            <LocalProvider>
-              <TerminalProvider paneId={props.paneId}>
-                <PromptProvider paneId={props.paneId}>{props.children}</PromptProvider>
-              </TerminalProvider>
-            </LocalProvider>
-          </DataProvider>
-        )
-      })}
+      <SyncedProviders paneId={props.paneId} directory={props.directory}>
+        {props.children}
+      </SyncedProviders>
     </SyncProvider>
   )
 }

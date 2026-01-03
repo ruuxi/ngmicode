@@ -91,20 +91,23 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         const index = store.panes.findIndex((p) => p.id === id)
         if (index === -1) return
 
+        const remaining = store.panes.filter((p) => p.id !== id)
+
         batch(() => {
+          setStore("panes", remaining)
           setStore(
-            "panes",
-            store.panes.filter((p) => p.id !== id),
+            "customWidths",
+            produce((widths) => {
+              delete widths[id]
+            }),
           )
-          setStore("customWidths", id, undefined!)
 
           if (store.focusedPaneId === id) {
-            const remaining = store.panes.filter((p) => p.id !== id)
             const newFocus = remaining[Math.min(index, remaining.length - 1)]
             setStore("focusedPaneId", newFocus?.id)
           }
 
-          const newTotalPages = Math.max(1, Math.ceil((store.panes.length - 1) / MAX_PANES_PER_PAGE))
+          const newTotalPages = Math.max(1, Math.ceil(remaining.length / MAX_PANES_PER_PAGE))
           if (store.currentPage >= newTotalPages) {
             setStore("currentPage", newTotalPages - 1)
           }
@@ -159,10 +162,14 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       movePane(id: string, toIndex: number) {
         const index = store.panes.findIndex((p) => p.id === id)
         if (index === -1) return
+
+        const clampedIndex = Math.max(0, Math.min(toIndex, store.panes.length - 1))
+        if (clampedIndex === index) return
+
         setStore(
           "panes",
           produce((panes) => {
-            panes.splice(toIndex, 0, panes.splice(index, 1)[0])
+            panes.splice(clampedIndex, 0, panes.splice(index, 1)[0])
           }),
         )
       },
