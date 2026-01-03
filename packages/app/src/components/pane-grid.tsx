@@ -1,14 +1,21 @@
-import { For, Show, createMemo, type ParentProps } from "solid-js"
+import { For, Show, createMemo, onCleanup, type ParentProps } from "solid-js"
 import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
+
+const MIN_PANE_WIDTH_PERCENT = 15
+const MIN_PANE_HEIGHT_PX = 80
+const MAX_PANE_HEIGHT_RATIO = 0.8
 
 type PaneGridProps = ParentProps<{
   panes: PaneConfig[]
-  renderPane: (pane: PaneConfig, index: number) => any
+  renderPane: (pane: PaneConfig) => any
 }>
 
 export function PaneGrid(props: PaneGridProps) {
   const multiPane = useMultiPane()
   let containerRef: HTMLDivElement | undefined
+  let activeResizeCleanup: (() => void) | null = null
+
+  onCleanup(() => activeResizeCleanup?.())
 
   const layout = createMemo(() => multiPane.layout())
   const customWidths = createMemo(() => multiPane.customWidths())
@@ -48,7 +55,7 @@ export function PaneGrid(props: PaneGridProps) {
     const nextWidth = customWidths()[nextPane.id] ?? defaultColumnWidth()
     const totalWidth = currentWidth + nextWidth
 
-    const clampedWidth = Math.max(15, Math.min(newWidthPercent, totalWidth - 15))
+    const clampedWidth = Math.max(MIN_PANE_WIDTH_PERCENT, Math.min(newWidthPercent, totalWidth - MIN_PANE_WIDTH_PERCENT))
     const newNextWidth = totalWidth - clampedWidth
 
     multiPane.setPaneWidth(currentPane.id, clampedWidth)
@@ -76,13 +83,17 @@ export function PaneGrid(props: PaneGridProps) {
         handleColumnResize(rowIndex, colIndex, newWidth)
       }
 
-      const onMouseUp = () => {
+      const cleanup = () => {
         document.body.style.userSelect = ""
         document.body.style.cursor = ""
         document.removeEventListener("mousemove", onMouseMove)
         document.removeEventListener("mouseup", onMouseUp)
+        activeResizeCleanup = null
       }
 
+      const onMouseUp = () => cleanup()
+
+      activeResizeCleanup = cleanup
       document.addEventListener("mousemove", onMouseMove)
       document.addEventListener("mouseup", onMouseUp)
     }
@@ -100,17 +111,21 @@ export function PaneGrid(props: PaneGridProps) {
 
       const onMouseMove = (moveEvent: MouseEvent) => {
         const deltaY = moveEvent.clientY - startY
-        const newHeight = Math.max(80, Math.min(startHeight + deltaY, containerHeight * 0.8))
+        const newHeight = Math.max(MIN_PANE_HEIGHT_PX, Math.min(startHeight + deltaY, containerHeight * MAX_PANE_HEIGHT_RATIO))
         handleRowResize(rowIndex, newHeight)
       }
 
-      const onMouseUp = () => {
+      const cleanup = () => {
         document.body.style.userSelect = ""
         document.body.style.cursor = ""
         document.removeEventListener("mousemove", onMouseMove)
         document.removeEventListener("mouseup", onMouseUp)
+        activeResizeCleanup = null
       }
 
+      const onMouseUp = () => cleanup()
+
+      activeResizeCleanup = cleanup
       document.addEventListener("mousemove", onMouseMove)
       document.addEventListener("mouseup", onMouseUp)
     }
@@ -127,7 +142,6 @@ export function PaneGrid(props: PaneGridProps) {
             >
               <For each={row}>
                 {(pane, colIndex) => {
-                  const paneIndex = createMemo(() => rowIndex() * layout().columns + colIndex())
                   const isLastInRow = createMemo(() => colIndex() === row.length - 1)
                   const paneWidth = createMemo(() => {
                     const custom = customWidths()[pane.id]
@@ -140,7 +154,7 @@ export function PaneGrid(props: PaneGridProps) {
                         class="relative min-w-0 min-h-0"
                         style={{ width: `${paneWidth()}%` }}
                       >
-                        {props.renderPane(pane, paneIndex())}
+                        {props.renderPane(pane)}
                       </div>
                       <Show when={!isLastInRow()}>
                         <div

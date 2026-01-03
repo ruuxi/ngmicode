@@ -88,23 +88,45 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext<
   init: (props) => createPromptContext(props?.paneId),
 })
 
+type PromptStore = {
+  prompt: Prompt
+  cursor?: number
+}
+
 function createPromptContext(paneId?: string) {
   const params = useParams()
-  const name = createMemo(() =>
-    paneId ? `pane/${paneId}/prompt.v1` : `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`,
-  )
 
+  // For pane-based prompts, don't persist (paneIds are random and would cause orphaned entries)
+  // For single session view, persist by directory/session
+  if (paneId) {
+    return createNonPersistedPromptContext()
+  }
+
+  const name = `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`
   const [store, setStore, _, ready] = persisted(
-    name(),
-    createStore<{
-      prompt: Prompt
-      cursor?: number
-    }>({
+    name,
+    createStore<PromptStore>({
       prompt: clonePrompt(DEFAULT_PROMPT),
       cursor: undefined,
     }),
   )
 
+  return createPromptMethods(store, setStore, ready)
+}
+
+function createNonPersistedPromptContext() {
+  const [store, setStore] = createStore<PromptStore>({
+    prompt: clonePrompt(DEFAULT_PROMPT),
+    cursor: undefined,
+  })
+  return createPromptMethods(store, setStore, () => true)
+}
+
+function createPromptMethods(
+  store: PromptStore,
+  setStore: import("solid-js/store").SetStoreFunction<PromptStore>,
+  ready: () => boolean,
+) {
   return {
     ready,
     current: createMemo(() => store.prompt),

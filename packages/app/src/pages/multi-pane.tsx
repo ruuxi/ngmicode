@@ -96,7 +96,7 @@ function MultiPaneContent() {
       >
         <PaneGrid
           panes={visiblePanes()}
-          renderPane={(pane, index) => (
+          renderPane={(pane) => (
             <SessionPane paneId={pane.id} directory={pane.directory} sessionId={pane.sessionId} />
           )}
         />
