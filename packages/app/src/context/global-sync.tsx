@@ -40,6 +40,14 @@ export type AskUserQuestionRequest = {
   }>
 }
 
+export type PlanModeRequest = {
+  id: string
+  sessionID: string
+  messageID: string
+  callID: string
+  plan: string
+}
+
 type State = {
   ready: boolean
   agent: Agent[]
@@ -63,6 +71,9 @@ type State = {
   }
   askuser: {
     [sessionID: string]: AskUserQuestionRequest[]
+  }
+  planmode: {
+    [sessionID: string]: PlanModeRequest[]
   }
   mcp: {
     [name: string]: McpStatus
@@ -113,6 +124,7 @@ function createGlobalSync() {
         todo: {},
         permission: {},
         askuser: {},
+        planmode: {},
         mcp: {},
         lsp: [],
         vcs: undefined,
@@ -451,6 +463,46 @@ function createGlobalSync() {
           draft.splice(result.index, 1)
         }),
       )
+    } else if (eventType === "planmode.review") {
+      const props = (event as unknown as { properties: PlanModeRequest }).properties
+      const sessionID = props.sessionID
+      const plans = store.planmode[sessionID]
+      if (!plans) {
+        setStore("planmode", sessionID, [props])
+        return
+      }
+
+      const result = Binary.search(plans, props.id, (p) => p.id)
+      if (result.found) {
+        setStore("planmode", sessionID, result.index, reconcile(props))
+        return
+      }
+
+      setStore(
+        "planmode",
+        sessionID,
+        produce((draft) => {
+          draft.splice(result.index, 0, props)
+        }),
+      )
+    } else if (eventType === "planmode.responded") {
+      const props = (event as unknown as { properties: { requestID: string; approved: boolean } }).properties
+      // Find and remove from all sessions (we don't have sessionID in the response)
+      for (const sessionID of Object.keys(store.planmode)) {
+        const plans = store.planmode[sessionID]
+        if (!plans) continue
+        const result = Binary.search(plans, props.requestID, (p) => p.id)
+        if (result.found) {
+          setStore(
+            "planmode",
+            sessionID,
+            produce((draft) => {
+              draft.splice(result.index, 1)
+            }),
+          )
+          return
+        }
+      }
     }
   })
 

@@ -15,6 +15,14 @@ export type AskUserQuestionRequest = {
   }>
 }
 
+export type PlanModeRequest = {
+  id: string
+  sessionID: string
+  messageID: string
+  callID: string
+  plan: string
+}
+
 type Data = {
   session: Session[]
   session_status: {
@@ -31,6 +39,9 @@ type Data = {
   }
   askuser?: {
     [sessionID: string]: AskUserQuestionRequest[]
+  }
+  planmode?: {
+    [sessionID: string]: PlanModeRequest[]
   }
   message: {
     [sessionID: string]: Message[]
@@ -51,6 +62,11 @@ export type AskUserRespondFn = (input: {
   answers: Record<string, string>
 }) => void
 
+export type PlanModeRespondFn = (input: {
+  requestID: string
+  approved: boolean
+}) => void
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -58,6 +74,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     directory: string
     onPermissionRespond?: PermissionRespondFn
     onAskUserRespond?: AskUserRespondFn
+    onPlanModeRespond?: PlanModeRespondFn
   }) => {
     return {
       get store() {
@@ -68,6 +85,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       },
       respondToPermission: props.onPermissionRespond,
       respondToAskUser: props.onAskUserRespond,
+      respondToPlanMode: props.onPlanModeRespond,
     }
   },
 })

@@ -41,12 +41,25 @@ export default function Layout(props: ParentProps) {
               return response.json()
             }
 
+            const respondToPlanMode = async (input: { requestID: string; approved: boolean }) => {
+              const response = await fetch(`${globalSDK.url}/planmode/${input.requestID}/reply`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-opencode-directory": directory(),
+                },
+                body: JSON.stringify({ approved: input.approved }),
+              })
+              return response.json()
+            }
+
             return (
               <DataProvider
                 data={sync.data}
                 directory={directory()}
                 onPermissionRespond={respondToPermission}
                 onAskUserRespond={respondToAskUser}
+                onPlanModeRespond={respondToPlanMode}
               >
                 <LocalProvider>{props.children}</LocalProvider>
               </DataProvider>
