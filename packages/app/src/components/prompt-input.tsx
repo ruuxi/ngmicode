@@ -34,6 +34,7 @@ import { persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { usePermission } from "@/context/permission"
+import { WorktreeStatusIndicator } from "@/components/session-worktree-indicator"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -1194,7 +1195,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     let existing = info()
     if (!existing) {
-      const created = await sdk.client.session.create()
+      const worktreeEnabled = layout.worktree.enabled()
+      const worktreeCleanup = layout.worktree.cleanup()
+      // SDK types need regeneration to include worktree params
+      const createParams = worktreeEnabled
+        ? { useWorktree: true, worktreeCleanup }
+        : {}
+      const created = await sdk.client.session.create(createParams as Parameters<typeof sdk.client.session.create>[0])
       existing = created.data ?? undefined
       if (existing) navigate(existing.id)
     }
@@ -1339,7 +1346,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-3">
+    <div class="relative size-full _max-h-[320px] flex flex-col gap-2">
+      {/* Worktree status indicator - above prompt bar on the right */}
+      <div class="flex justify-end">
+        <WorktreeStatusIndicator />
+      </div>
       <Show when={store.popover}>
         <div
           class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10

@@ -16,6 +16,7 @@ import { SessionPrompt } from "./prompt"
 import { fn } from "@/util/fn"
 import { Command } from "../command"
 import { Snapshot } from "@/snapshot"
+import { Worktree } from "@/worktree"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -72,6 +73,7 @@ export namespace Session {
           diff: z.string().optional(),
         })
         .optional(),
+      worktree: Worktree.Info.optional(),
     })
     .meta({
       ref: "Session",
@@ -129,6 +131,8 @@ export namespace Session {
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
         permission: Info.shape.permission,
+        useWorktree: z.boolean().optional(),
+        worktreeCleanup: Worktree.CleanupMode.optional(),
       })
       .optional(),
     async (input) => {
@@ -137,6 +141,8 @@ export namespace Session {
         directory: Instance.directory,
         title: input?.title,
         permission: input?.permission,
+        useWorktree: input?.useWorktree,
+        worktreeCleanup: input?.worktreeCleanup,
       })
     },
   )
@@ -145,10 +151,14 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message").optional(),
+      useWorktree: z.boolean().optional(),
+      worktreeCleanup: Worktree.CleanupMode.optional(),
     }),
     async (input) => {
       const session = await createNext({
         directory: Instance.directory,
+        useWorktree: input.useWorktree,
+        worktreeCleanup: input.worktreeCleanup,
       })
       const msgs = await messages({ sessionID: input.sessionID })
       for (const msg of msgs) {
@@ -184,15 +194,37 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
+    useWorktree?: boolean
+    worktreeCleanup?: Worktree.CleanupMode
   }) {
+    const sessionId = Identifier.descending("session", input.id)
+    let worktreeInfo: Worktree.Info | undefined
+    let sessionDirectory = input.directory
+
+    // Create worktree if requested and project is git-managed
+    if (input.useWorktree && Instance.project.vcs === "git") {
+      try {
+        worktreeInfo = await Worktree.create({
+          sessionID: sessionId,
+          cleanup: input.worktreeCleanup,
+        })
+        sessionDirectory = worktreeInfo.path
+        log.info("created worktree for session", { sessionID: sessionId, path: worktreeInfo.path })
+      } catch (err) {
+        log.warn("failed to create worktree, falling back to normal session", { error: err })
+        // Continue without worktree
+      }
+    }
+
     const result: Info = {
-      id: Identifier.descending("session", input.id),
+      id: sessionId,
       version: Installation.VERSION,
       projectID: Instance.project.id,
-      directory: input.directory,
+      directory: sessionDirectory,
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
+      worktree: worktreeInfo,
       time: {
         created: Date.now(),
         updated: Date.now(),
@@ -304,28 +336,53 @@ export namespace Session {
     return result
   })
 
-  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
-    const project = Instance.project
-    try {
-      const session = await get(sessionID)
-      for (const child of await children(sessionID)) {
-        await remove(child.id)
-      }
-      await unshare(sessionID).catch(() => {})
-      for (const msg of await Storage.list(["message", sessionID])) {
-        for (const part of await Storage.list(["part", msg.at(-1)!])) {
-          await Storage.remove(part)
+  export const remove = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      removeWorktree: z.boolean().optional(),
+    }),
+    async (input) => {
+      const project = Instance.project
+      try {
+        const session = await get(input.sessionID)
+
+        // Handle worktree cleanup
+        if (session.worktree) {
+          const shouldRemove =
+            input.removeWorktree ?? session.worktree.cleanup === "always"
+
+          if (shouldRemove) {
+            try {
+              await Worktree.remove(session.worktree.path)
+              log.info("removed worktree", { path: session.worktree.path })
+            } catch (err) {
+              log.warn("failed to remove worktree", { path: session.worktree.path, error: err })
+              // Continue with session deletion even if worktree removal fails
+            }
+          } else {
+            log.info("keeping worktree", { path: session.worktree.path })
+          }
         }
-        await Storage.remove(msg)
+
+        for (const child of await children(input.sessionID)) {
+          await remove({ sessionID: child.id, removeWorktree: input.removeWorktree })
+        }
+        await unshare(input.sessionID).catch(() => {})
+        for (const msg of await Storage.list(["message", input.sessionID])) {
+          for (const part of await Storage.list(["part", msg.at(-1)!])) {
+            await Storage.remove(part)
+          }
+          await Storage.remove(msg)
+        }
+        await Storage.remove(["session", project.id, input.sessionID])
+        Bus.publish(Event.Deleted, {
+          info: session,
+        })
+      } catch (e) {
+        log.error(e)
       }
-      await Storage.remove(["session", project.id, sessionID])
-      Bus.publish(Event.Deleted, {
-        info: session,
-      })
-    } catch (e) {
-      log.error(e)
-    }
-  })
+    },
+  )
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     await Storage.write(["message", msg.sessionID, msg.id], msg)

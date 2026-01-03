@@ -586,6 +586,16 @@ export namespace Config {
         .optional(),
       plugin: z.string().array().optional(),
       snapshot: z.boolean().optional(),
+      worktree: z
+        .object({
+          enabled: z.boolean().default(false).describe("Enable git worktree isolation for sessions"),
+          cleanup: z
+            .enum(["ask", "always", "never"])
+            .default("ask")
+            .describe("How to handle worktree cleanup when session is deleted"),
+        })
+        .optional()
+        .describe("Git worktree configuration for session isolation"),
       share: z
         .enum(["manual", "auto", "disabled"])
         .optional()
