@@ -44,6 +44,8 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
+import { ClaudeAgentProcessor } from "./claude-agent-processor"
+import { ClaudeAgent } from "@/provider/claude-agent"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -499,6 +501,79 @@ export namespace SessionPrompt {
           model: lastUser.model,
           auto: true,
         })
+        continue
+      }
+
+      // Claude Agent processing - use Agent SDK instead of normal LLM flow
+      if (ClaudeAgent.isClaudeAgentModel(model.providerID)) {
+        const agent = await Agent.get(lastUser.agent)
+        const assistantMessage = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          parentID: lastUser.id,
+          role: "assistant",
+          mode: agent.name,
+          agent: agent.name,
+          path: {
+            cwd: Instance.directory,
+            root: Instance.worktree,
+          },
+          cost: 0,
+          tokens: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+          modelID: model.id,
+          providerID: model.providerID,
+          time: {
+            created: Date.now(),
+          },
+          sessionID,
+        })) as MessageV2.Assistant
+
+        // Extract prompt text from user message parts
+        const userParts = await MessageV2.parts(lastUser.id)
+        const promptText = userParts
+          .filter((p): p is MessageV2.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+
+        try {
+          const result = await ClaudeAgentProcessor.process({
+            sessionID,
+            assistantMessage,
+            prompt: promptText,
+            agent,
+            abort,
+          })
+
+          // Update assistant message with result
+          assistantMessage.finish = result.finish
+          assistantMessage.cost = result.cost
+          assistantMessage.tokens = result.tokens
+          assistantMessage.time.completed = Date.now()
+          await Session.updateMessage(assistantMessage)
+
+          if (result.finish !== "end_turn" && result.finish !== "tool-calls") {
+            break
+          }
+        } catch (error) {
+          log.error("claude agent processing failed", { error })
+          if (MessageV2.AuthError.isInstance(error)) {
+            assistantMessage.error = error.toObject()
+          } else {
+            assistantMessage.error = {
+              name: "UnknownError",
+              data: {
+                message: error instanceof Error ? error.message : "Unknown error",
+              },
+            }
+          }
+          assistantMessage.time.completed = Date.now()
+          await Session.updateMessage(assistantMessage)
+          break
+        }
         continue
       }
 

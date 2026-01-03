@@ -66,6 +66,7 @@
     "@ai-sdk/togetherai": "1.0.30",
     "@ai-sdk/vercel": "1.0.31",
     "@ai-sdk/xai": "2.0.42",
+    "@anthropic-ai/claude-agent-sdk": "0.1.76",
     "@hono/standard-validator": "0.1.5",
     "@hono/zod-validator": "catalog:",
     "@modelcontextprotocol/sdk": "1.15.1",
