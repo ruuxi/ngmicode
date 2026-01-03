@@ -9,6 +9,7 @@
 @import "../components/accordion.css" layer(components);
 @import "../components/ask-user-question.css" layer(components);
 @import "../components/avatar.css" layer(components);
+@import "../components/plan-review.css" layer(components);
 @import "../components/basic-tool.css" layer(components);
 @import "../components/button.css" layer(components);
 @import "../components/card.css" layer(components);

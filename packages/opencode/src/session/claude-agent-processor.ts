@@ -9,6 +9,7 @@ import {
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
 import { AskUserQuestion } from "./ask-user-question"
+import { PlanMode } from "./plan-mode"
 import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
@@ -261,6 +262,39 @@ export namespace ClaudeAgentProcessor {
           return {
             behavior: "deny",
             message: e instanceof Error ? e.message : "Failed to get user response",
+          }
+        }
+      }
+
+      // Handle ExitPlanMode - wait for user to approve/reject the plan
+      if (toolName === "ExitPlanMode") {
+        const planInput = input as { plan?: string }
+
+        log.info("intercepting ExitPlanMode tool", {
+          sessionID: ctx.sessionID,
+          planLength: planInput.plan?.length,
+        })
+
+        try {
+          const approved = await PlanMode.review({
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: options.toolUseID ?? Identifier.ascending("tool"),
+            plan: planInput.plan ?? "",
+          })
+
+          return {
+            behavior: "allow",
+            updatedInput: {
+              ...input,
+              approved,
+            },
+          }
+        } catch (e) {
+          log.error("ExitPlanMode failed", { error: e })
+          return {
+            behavior: "deny",
+            message: e instanceof Error ? e.message : "Failed to get plan approval",
           }
         }
       }
@@ -557,6 +591,7 @@ export namespace ClaudeAgentProcessor {
             "Task",
             "TodoWrite",
             "AskUserQuestion",
+            "ExitPlanMode",
           ],
         },
       })
@@ -595,8 +630,9 @@ export namespace ClaudeAgentProcessor {
         throw error
       }
     } finally {
-      // Cancel any pending AskUserQuestion requests for this session
+      // Cancel any pending AskUserQuestion and PlanMode requests for this session
       AskUserQuestion.cancelSession(input.sessionID)
+      PlanMode.cancelSession(input.sessionID)
       SessionStatus.set(input.sessionID, { type: "idle" })
     }
 

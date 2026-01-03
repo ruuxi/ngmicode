@@ -47,6 +47,7 @@ import { errors } from "./error"
 import { Pty } from "@/pty"
 import { PermissionNext } from "@/permission/next"
 import { AskUserQuestion } from "@/session/ask-user-question"
+import { PlanMode } from "@/session/plan-mode"
 import { Skill } from "@/skill/skill"
 import { Installation } from "@/installation"
 import { MDNS } from "./mdns"
@@ -1725,6 +1726,96 @@ export namespace Server {
           const params = c.req.valid("param")
           const questions = AskUserQuestion.listForSession(params.sessionID)
           return c.json(questions)
+        },
+      )
+      // PlanMode endpoints
+      .post(
+        "/planmode/:requestID/reply",
+        describeRoute({
+          summary: "Reply to plan review",
+          description: "Approve or reject a plan review request from Claude.",
+          operationId: "planmode.reply",
+          responses: {
+            200: {
+              description: "Response submitted successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            requestID: z.string(),
+          }),
+        ),
+        validator("json", z.object({ approved: z.boolean() })),
+        async (c) => {
+          const params = c.req.valid("param")
+          const json = c.req.valid("json")
+          const success = PlanMode.reply({
+            requestID: params.requestID,
+            approved: json.approved,
+          })
+          if (!success) {
+            return c.json({ error: "Request not found" }, 404)
+          }
+          return c.json(true)
+        },
+      )
+      .get(
+        "/planmode",
+        describeRoute({
+          summary: "List pending plan reviews",
+          description: "Get all pending plan review requests across all sessions.",
+          operationId: "planmode.list",
+          responses: {
+            200: {
+              description: "List of pending plan reviews",
+              content: {
+                "application/json": {
+                  schema: resolver(PlanMode.Request.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const plans = PlanMode.list()
+          return c.json(plans)
+        },
+      )
+      .get(
+        "/session/:sessionID/planmode",
+        describeRoute({
+          summary: "List pending plan reviews for session",
+          description: "Get pending plan review requests for a specific session.",
+          operationId: "planmode.listForSession",
+          responses: {
+            200: {
+              description: "List of pending plan reviews for session",
+              content: {
+                "application/json": {
+                  schema: resolver(PlanMode.Request.array()),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const params = c.req.valid("param")
+          const plans = PlanMode.listForSession(params.sessionID)
+          return c.json(plans)
         },
       )
       .get(

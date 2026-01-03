@@ -37,6 +37,7 @@ import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { AskUserQuestion } from "./ask-user-question"
+import { PlanReview } from "./plan-review"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { createAutoScroll } from "../hooks"
@@ -1016,5 +1017,12 @@ ToolRegistry.register({
   name: "AskUserQuestion",
   render(props) {
     return <AskUserQuestion {...props} />
+  },
+})
+
+ToolRegistry.register({
+  name: "ExitPlanMode",
+  render(props) {
+    return <PlanReview {...props} />
   },
 })
