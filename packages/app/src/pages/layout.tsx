@@ -56,7 +56,15 @@ import { DialogSelectServer } from "@/components/dialog-select-server"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
+import { DialogWorktreeCleanup } from "@/components/dialog-worktree-cleanup"
 import { useServer } from "@/context/server"
+
+interface WorktreeSession extends Session {
+  worktree?: {
+    path: string
+    cleanup: "ask" | "always" | "never"
+  }
+}
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -331,17 +339,43 @@ export default function Layout(props: ParentProps) {
     queueMicrotask(() => scrollToSession(targetSession.id))
   }
 
-  async function archiveSession(session: Session) {
+  async function archiveSession(session: Session, removeWorktree?: boolean) {
     const [store, setStore] = globalSync.child(session.directory)
     const sessions = store.session ?? []
     const index = sessions.findIndex((s) => s.id === session.id)
     const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
-    await globalSDK.client.session.update({
-      directory: session.directory,
-      sessionID: session.id,
-      time: { archived: Date.now() },
-    })
+    // Cast to WorktreeSession to access worktree field
+    const worktreeSession = session as WorktreeSession
+
+    // Check if session has worktree and needs confirmation
+    if (worktreeSession.worktree && worktreeSession.worktree.cleanup === "ask" && removeWorktree === undefined) {
+      dialog.show(() => (
+        <DialogWorktreeCleanup
+          session={worktreeSession}
+          onConfirm={(shouldRemove) => archiveSession(session, shouldRemove)}
+        />
+      ))
+      return
+    }
+
+    // If worktree needs to be removed, call the delete endpoint with removeWorktree flag
+    if (worktreeSession.worktree && removeWorktree) {
+      // SDK types need regeneration to include removeWorktree param
+      const deleteParams = {
+        directory: session.directory,
+        sessionID: session.id,
+        removeWorktree: true,
+      }
+      await globalSDK.client.session.delete(deleteParams as Parameters<typeof globalSDK.client.session.delete>[0])
+    } else {
+      await globalSDK.client.session.update({
+        directory: session.directory,
+        sessionID: session.id,
+        time: { archived: Date.now() },
+      })
+    }
+
     setStore(
       produce((draft) => {
         const match = Binary.search(draft.session, session.id, (s) => s.id)

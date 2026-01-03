@@ -8,6 +8,7 @@ import { cors } from "hono/cors"
 import { stream, streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
 import { Session } from "../session"
+import { Identifier } from "../id/id"
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { filter, mapValues, sortBy, pipe } from "remeda"
@@ -848,12 +849,19 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: Session.remove.schema,
+            sessionID: Identifier.schema("session"),
+          }),
+        ),
+        validator(
+          "query",
+          z.object({
+            removeWorktree: z.coerce.boolean().optional(),
           }),
         ),
         async (c) => {
-          const sessionID = c.req.valid("param").sessionID
-          await Session.remove(sessionID)
+          const { sessionID } = c.req.valid("param")
+          const { removeWorktree } = c.req.valid("query")
+          await Session.remove({ sessionID, removeWorktree })
           return c.json(true)
         },
       )
@@ -1543,6 +1551,90 @@ export namespace Server {
           const sessionID = c.req.valid("param").sessionID
           const session = await SessionRevert.unrevert({ sessionID })
           return c.json(session)
+        },
+      )
+      .get(
+        "/session/:sessionID/worktree",
+        describeRoute({
+          summary: "Get worktree status",
+          description: "Get the worktree status for a session.",
+          operationId: "session.worktree.get",
+          responses: {
+            200: {
+              description: "Worktree status",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      exists: z.boolean(),
+                      path: z.string().optional(),
+                      cleanup: z.enum(["ask", "always", "never"]).optional(),
+                    }),
+                  ),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: Identifier.schema("session"),
+          }),
+        ),
+        async (c) => {
+          const { sessionID } = c.req.valid("param")
+          const session = await Session.get(sessionID)
+          if (!session.worktree) {
+            return c.json({ exists: false })
+          }
+          const { Worktree } = await import("@/worktree")
+          const exists = await Worktree.exists(session.worktree.path)
+          return c.json({
+            exists,
+            path: session.worktree.path,
+            cleanup: session.worktree.cleanup,
+          })
+        },
+      )
+      .delete(
+        "/session/:sessionID/worktree",
+        describeRoute({
+          summary: "Remove worktree",
+          description: "Manually remove the worktree associated with a session.",
+          operationId: "session.worktree.delete",
+          responses: {
+            200: {
+              description: "Worktree removed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: Identifier.schema("session"),
+          }),
+        ),
+        async (c) => {
+          const { sessionID } = c.req.valid("param")
+          const session = await Session.get(sessionID)
+          if (!session.worktree) {
+            return c.json(false)
+          }
+          const { Worktree } = await import("@/worktree")
+          await Worktree.remove(session.worktree.path)
+          // Update session to remove worktree info
+          await Session.update(sessionID, (draft) => {
+            draft.worktree = undefined
+          })
+          return c.json(true)
         },
       )
       .post(

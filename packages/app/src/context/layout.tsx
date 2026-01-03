@@ -57,6 +57,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           width: 600,
         },
         sessionTabs: {} as Record<string, SessionTabs>,
+        worktree: {
+          enabled: false,
+          cleanup: "ask" as "ask" | "always" | "never",
+        },
       }),
     )
 
@@ -185,6 +189,31 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           } else {
             setStore("session", "width", width)
           }
+        },
+      },
+      worktree: {
+        enabled: createMemo(() => store.worktree?.enabled ?? false),
+        cleanup: createMemo(() => store.worktree?.cleanup ?? "ask"),
+        toggle() {
+          if (!store.worktree) {
+            setStore("worktree", { enabled: true, cleanup: "ask" as const })
+            return
+          }
+          setStore("worktree", "enabled", (x) => !x)
+        },
+        setEnabled(enabled: boolean) {
+          if (!store.worktree) {
+            setStore("worktree", { enabled, cleanup: "ask" as const })
+            return
+          }
+          setStore("worktree", "enabled", enabled)
+        },
+        setCleanup(cleanup: "ask" | "always" | "never") {
+          if (!store.worktree) {
+            setStore("worktree", { enabled: false, cleanup })
+            return
+          }
+          setStore("worktree", "cleanup", cleanup)
         },
       },
       tabs(sessionKey: string) {
