@@ -80,41 +80,48 @@ function clonePrompt(prompt: Prompt): Prompt {
   return prompt.map(clonePart)
 }
 
-export const { use: usePrompt, provider: PromptProvider } = createSimpleContext({
+export const { use: usePrompt, provider: PromptProvider } = createSimpleContext<
+  ReturnType<typeof createPromptContext>,
+  { paneId?: string }
+>({
   name: "Prompt",
-  init: () => {
-    const params = useParams()
-    const name = createMemo(() => `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`)
-
-    const [store, setStore, _, ready] = persisted(
-      name(),
-      createStore<{
-        prompt: Prompt
-        cursor?: number
-      }>({
-        prompt: clonePrompt(DEFAULT_PROMPT),
-        cursor: undefined,
-      }),
-    )
-
-    return {
-      ready,
-      current: createMemo(() => store.prompt),
-      cursor: createMemo(() => store.cursor),
-      dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
-      set(prompt: Prompt, cursorPosition?: number) {
-        const next = clonePrompt(prompt)
-        batch(() => {
-          setStore("prompt", next)
-          if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
-        })
-      },
-      reset() {
-        batch(() => {
-          setStore("prompt", clonePrompt(DEFAULT_PROMPT))
-          setStore("cursor", 0)
-        })
-      },
-    }
-  },
+  init: (props) => createPromptContext(props?.paneId),
 })
+
+function createPromptContext(paneId?: string) {
+  const params = useParams()
+  const name = createMemo(() =>
+    paneId ? `pane/${paneId}/prompt.v1` : `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`,
+  )
+
+  const [store, setStore, _, ready] = persisted(
+    name(),
+    createStore<{
+      prompt: Prompt
+      cursor?: number
+    }>({
+      prompt: clonePrompt(DEFAULT_PROMPT),
+      cursor: undefined,
+    }),
+  )
+
+  return {
+    ready,
+    current: createMemo(() => store.prompt),
+    cursor: createMemo(() => store.cursor),
+    dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
+    set(prompt: Prompt, cursorPosition?: number) {
+      const next = clonePrompt(prompt)
+      batch(() => {
+        setStore("prompt", next)
+        if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
+      })
+    },
+    reset() {
+      batch(() => {
+        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+        setStore("cursor", 0)
+      })
+    },
+  }
+}

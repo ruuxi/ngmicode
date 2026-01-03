@@ -48,6 +48,9 @@ interface SkillInfo {
 interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
+  paneId?: string
+  sessionId?: string
+  onSessionCreated?: (sessionId: string) => void
 }
 
 const PLACEHOLDERS = [
@@ -133,12 +136,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     requestAnimationFrame(scrollCursorIntoView)
   }
 
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
+  const effectiveSessionId = createMemo(() => props.sessionId ?? params.id)
+  const sessionKey = createMemo(() => `${params.dir}${effectiveSessionId() ? "/" + effectiveSessionId() : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
-  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const info = createMemo(() => (effectiveSessionId() ? sync.session.get(effectiveSessionId()!) : undefined))
   const status = createMemo(
     () =>
-      sync.data.session_status[params.id ?? ""] ?? {
+      sync.data.session_status[effectiveSessionId() ?? ""] ?? {
         type: "idle",
       },
   )
@@ -1203,7 +1207,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         : {}
       const created = await sdk.client.session.create(createParams as Parameters<typeof sdk.client.session.create>[0])
       existing = created.data ?? undefined
-      if (existing) navigate(existing.id)
+      if (existing) {
+        if (props.onSessionCreated) {
+          props.onSessionCreated(existing.id)
+        } else {
+          navigate(existing.id)
+        }
+      }
     }
     if (!existing) return
 

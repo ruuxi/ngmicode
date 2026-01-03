@@ -13,7 +13,7 @@ import {
   type JSX,
 } from "solid-js"
 import { DateTime } from "luxon"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
@@ -95,6 +95,7 @@ export default function Layout(props: ParentProps) {
   onCleanup(() => xlQuery.removeEventListener("change", handleViewportChange))
 
   const params = useParams()
+  const location = useLocation()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const layout = useLayout()
@@ -676,6 +677,8 @@ export default function Layout(props: ParentProps) {
     )
   }
 
+  const isMultiPaneMode = createMemo(() => location.pathname === "/multi")
+
   const SessionItem = (props: {
     session: Session
     slug: string
@@ -703,6 +706,14 @@ export default function Layout(props: ParentProps) {
       const status = globalSync.child(props.project.worktree)[0].session_status[props.session.id]
       return status?.type === "busy" || status?.type === "retry"
     })
+
+    function handleSessionClick(e: MouseEvent) {
+      if (isMultiPaneMode()) {
+        e.preventDefault()
+        navigate(`/multi?session=${props.session.id}&dir=${encodeURIComponent(props.project.worktree)}`)
+      }
+    }
+
     return (
       <>
         <div
@@ -714,6 +725,7 @@ export default function Layout(props: ParentProps) {
           <Tooltip placement={props.mobile ? "bottom" : "right"} value={props.session.title} gutter={10}>
             <A
               href={`${props.slug}/session/${props.session.id}`}
+              onClick={handleSessionClick}
               class="flex flex-col min-w-0 text-left w-full focus:outline-none"
             >
               <div class="flex items-center self-stretch gap-6 justify-between transition-[padding] group-hover/session:pr-7 group-focus-within/session:pr-7 group-active/session:pr-7">
