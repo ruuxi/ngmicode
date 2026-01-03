@@ -1,9 +1,13 @@
 import { $ } from "bun"
-import path from "path"
 import fs from "fs/promises"
-import { Log } from "../util/log"
-import { Instance } from "../project/instance"
+import path from "path"
 import z from "zod"
+import { NamedError } from "@opencode-ai/util/error"
+import { Global } from "../global"
+import { Instance } from "../project/instance"
+import { Project } from "../project/project"
+import { fn } from "../util/fn"
+import { Log } from "../util/log"
 
 export namespace Worktree {
   const log = Log.create({ service: "worktree" })
@@ -44,10 +48,7 @@ export namespace Worktree {
    * Create a worktree with a dedicated branch for a session.
    * Creates branch opencode/session-{sessionID} at current HEAD.
    */
-  export async function create(input: {
-    sessionID: string
-    cleanup?: CleanupMode
-  }): Promise<Info> {
+  export async function create(input: { sessionID: string; cleanup?: CleanupMode }): Promise<Info> {
     const worktreePath = getPath(input.sessionID)
     const branchName = getBranchName(input.sessionID)
 
@@ -83,11 +84,7 @@ export namespace Worktree {
     return result.exitCode === 0
   }
 
-  async function createAtPath(
-    worktreePath: string,
-    branchName: string,
-    cleanup: CleanupMode,
-  ): Promise<Info> {
+  async function createAtPath(worktreePath: string, branchName: string, cleanup: CleanupMode): Promise<Info> {
     log.info("creating worktree with branch", { path: worktreePath, branch: branchName })
 
     // Check if branch already exists (e.g., from failed cleanup)
@@ -129,11 +126,7 @@ export namespace Worktree {
   /**
    * Remove a worktree and optionally its branch.
    */
-  export async function remove(input: {
-    path: string
-    branch?: string
-    deleteBranch?: boolean
-  }): Promise<void> {
+  export async function remove(input: { path: string; branch?: string; deleteBranch?: boolean }): Promise<void> {
     const { path: worktreePath, branch, deleteBranch = true } = input
     log.info("removing worktree", { path: worktreePath, branch, deleteBranch })
 
@@ -171,10 +164,7 @@ export namespace Worktree {
     // Delete the branch if requested
     if (branch && deleteBranch) {
       log.info("deleting branch", { branch })
-      const branchResult = await $`git branch -D ${branch}`
-        .cwd(Instance.worktree)
-        .quiet()
-        .nothrow()
+      const branchResult = await $`git branch -D ${branch}`.cwd(Instance.worktree).quiet().nothrow()
 
       if (branchResult.exitCode !== 0) {
         log.warn("failed to delete branch", {
@@ -200,10 +190,7 @@ export namespace Worktree {
     if (!dirExists) return false
 
     // Verify it's actually a git worktree
-    const result = await $`git worktree list --porcelain`
-      .cwd(Instance.worktree)
-      .quiet()
-      .nothrow()
+    const result = await $`git worktree list --porcelain`.cwd(Instance.worktree).quiet().nothrow()
 
     if (result.exitCode !== 0) return false
 
@@ -222,10 +209,7 @@ export namespace Worktree {
    * List all worktrees for the current repository.
    */
   export async function list(): Promise<string[]> {
-    const result = await $`git worktree list --porcelain`
-      .cwd(Instance.worktree)
-      .quiet()
-      .nothrow()
+    const result = await $`git worktree list --porcelain`.cwd(Instance.worktree).quiet().nothrow()
 
     if (result.exitCode !== 0) return []
 
@@ -248,4 +232,208 @@ export namespace Worktree {
       this.name = "WorktreeError"
     }
   }
+
+  export const ManagedInfo = z
+    .object({
+      name: z.string(),
+      branch: z.string(),
+      directory: z.string(),
+    })
+    .meta({
+      ref: "Worktree",
+    })
+
+  export type ManagedInfo = z.infer<typeof ManagedInfo>
+
+  export const ManagedCreateInput = z
+    .object({
+      name: z.string().optional(),
+      startCommand: z.string().optional(),
+    })
+    .meta({
+      ref: "WorktreeCreateInput",
+    })
+
+  export type ManagedCreateInput = z.infer<typeof ManagedCreateInput>
+
+  export const NotGitError = NamedError.create(
+    "WorktreeNotGitError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
+  export const NameGenerationFailedError = NamedError.create(
+    "WorktreeNameGenerationFailedError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
+  export const CreateFailedError = NamedError.create(
+    "WorktreeCreateFailedError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
+  export const StartCommandFailedError = NamedError.create(
+    "WorktreeStartCommandFailedError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
+  const ADJECTIVES = [
+    "brave",
+    "calm",
+    "clever",
+    "cosmic",
+    "crisp",
+    "curious",
+    "eager",
+    "gentle",
+    "glowing",
+    "happy",
+    "hidden",
+    "jolly",
+    "kind",
+    "lucky",
+    "mighty",
+    "misty",
+    "neon",
+    "nimble",
+    "playful",
+    "proud",
+    "quick",
+    "quiet",
+    "shiny",
+    "silent",
+    "stellar",
+    "sunny",
+    "swift",
+    "tidy",
+    "witty",
+  ] as const
+
+  const NOUNS = [
+    "cabin",
+    "cactus",
+    "canyon",
+    "circuit",
+    "comet",
+    "eagle",
+    "engine",
+    "falcon",
+    "forest",
+    "garden",
+    "harbor",
+    "island",
+    "knight",
+    "lagoon",
+    "meadow",
+    "moon",
+    "mountain",
+    "nebula",
+    "orchid",
+    "otter",
+    "panda",
+    "pixel",
+    "planet",
+    "river",
+    "rocket",
+    "sailor",
+    "squid",
+    "star",
+    "tiger",
+    "wizard",
+    "wolf",
+  ] as const
+
+  function pick<const T extends readonly string[]>(list: T) {
+    return list[Math.floor(Math.random() * list.length)]
+  }
+
+  function slug(input: string) {
+    return input
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+/, "")
+      .replace(/-+$/, "")
+  }
+
+  function randomName() {
+    return `${pick(ADJECTIVES)}-${pick(NOUNS)}`
+  }
+
+  async function directoryExists(target: string) {
+    return fs
+      .stat(target)
+      .then(() => true)
+      .catch(() => false)
+  }
+
+  function outputText(input: Uint8Array | undefined) {
+    if (!input?.length) return ""
+    return new TextDecoder().decode(input).trim()
+  }
+
+  function errorText(result: { stdout?: Uint8Array; stderr?: Uint8Array }) {
+    return [outputText(result.stderr), outputText(result.stdout)].filter(Boolean).join("\n")
+  }
+
+  async function candidate(root: string, base?: string) {
+    for (const attempt of Array.from({ length: 26 }, (_, i) => i)) {
+      const name = base ? (attempt === 0 ? base : `${base}-${randomName()}`) : randomName()
+      const branch = `opencode/${name}`
+      const directory = path.join(root, name)
+
+      if (await directoryExists(directory)) continue
+
+      const ref = `refs/heads/${branch}`
+      const branchCheck = await $`git show-ref --verify --quiet ${ref}`.quiet().nothrow().cwd(Instance.worktree)
+      if (branchCheck.exitCode === 0) continue
+
+      return ManagedInfo.parse({ name, branch, directory })
+    }
+
+    throw new NameGenerationFailedError({ message: "Failed to generate a unique worktree name" })
+  }
+
+  async function runStartCommand(directory: string, cmd: string) {
+    if (process.platform === "win32") {
+      return $`cmd /c ${cmd}`.nothrow().cwd(directory)
+    }
+    return $`bash -lc ${cmd}`.nothrow().cwd(directory)
+  }
+
+  export const createManaged = fn(ManagedCreateInput.optional(), async (input) => {
+    if (Instance.project.vcs !== "git") {
+      throw new NotGitError({ message: "Worktrees are only supported for git projects" })
+    }
+
+    const root = path.join(Global.Path.data, "worktree", Instance.project.id)
+    await fs.mkdir(root, { recursive: true })
+
+    const base = input?.name ? slug(input.name) : ""
+    const info = await candidate(root, base || undefined)
+
+    const created = await $`git worktree add -b ${info.branch} ${info.directory}`.nothrow().cwd(Instance.worktree)
+    if (created.exitCode !== 0) {
+      throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
+    }
+
+    await Project.addSandbox(Instance.project.id, info.directory)
+
+    const cmd = input?.startCommand?.trim()
+    if (!cmd) return info
+
+    const ran = await runStartCommand(info.directory, cmd)
+    if (ran.exitCode !== 0) {
+      throw new StartCommandFailedError({ message: errorText(ran) || "Worktree start command failed" })
+    }
+
+    return info
+  })
 }
