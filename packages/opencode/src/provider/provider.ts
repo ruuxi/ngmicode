@@ -36,6 +36,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
+import { ClaudeAgent } from "./claude-agent"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -405,6 +406,16 @@ export namespace Provider {
         },
       }
     },
+    "claude-agent": async () => {
+      // Always autoload to make it visible in the UI
+      // API key check happens when actually using the provider
+      return {
+        autoload: true,
+        options: {
+          __isClaudeAgent: true,
+        },
+      }
+    },
   }
 
   export const Model = z
@@ -608,6 +619,9 @@ export namespace Provider {
         })),
       }
     }
+
+    // Add Claude Agent provider (uses Anthropic Agent SDK)
+    database["claude-agent"] = ClaudeAgent.PROVIDER
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -1059,9 +1073,19 @@ export namespace Provider {
     const cfg = await Config.get()
     if (cfg.model) return parseModel(cfg.model)
 
-    const provider = await list()
-      .then((val) => Object.values(val))
-      .then((x) => x.find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)))
+    const providers = await list()
+
+    // Prefer Claude Code if available
+    if (providers["claude-agent"]) {
+      return {
+        providerID: "claude-agent",
+        modelID: "claude-agent",
+      }
+    }
+
+    const provider = Object.values(providers).find(
+      (p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id),
+    )
     if (!provider) throw new Error("no providers found")
     const [model] = sort(Object.values(provider.models))
     if (!model) throw new Error("no models found")
