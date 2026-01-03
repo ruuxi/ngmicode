@@ -235,6 +235,18 @@ function Header(props: { onMobileMenuToggle?: () => void }) {
                 </div>
               </Button>
             </TooltipKeybind>
+            <Tooltip class="hidden md:block shrink-0" value="New Tab">
+              <IconButton
+                icon="plus"
+                variant="ghost"
+                onClick={() => {
+                  const url = params.id
+                    ? `/multi?session=${params.id}&dir=${encodeURIComponent(sync.directory)}&newTab=true`
+                    : `/multi?dir=${encodeURIComponent(sync.directory)}&newTab=true`
+                  navigate(url)
+                }}
+              />
+            </Tooltip>
           </div>
           <Show when={shareEnabled() && currentSession()}>
             <Popover
