@@ -20,6 +20,8 @@ import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 
+const MAX_PANE_TERMINAL_HEIGHT = 200
+
 type SessionPaneProps = {
   paneId: string
   directory?: string
@@ -189,11 +191,11 @@ function PaneContent(props: ActivePaneProps) {
         <Show when={layout.terminal.opened()}>
           <div
             class="relative w-full flex flex-col shrink-0 border-t border-border-weak-base"
-            style={{ height: `${Math.min(layout.terminal.height(), 200)}px` }}
+            style={{ height: `${Math.min(layout.terminal.height(), MAX_PANE_TERMINAL_HEIGHT)}px` }}
           >
             <ResizeHandle
               direction="vertical"
-              size={Math.min(layout.terminal.height(), 200)}
+              size={Math.min(layout.terminal.height(), MAX_PANE_TERMINAL_HEIGHT)}
               min={80}
               max={300}
               collapseThreshold={40}
@@ -284,7 +286,7 @@ function EmptyPaneContent(props: { paneId: string }) {
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
       }}
-      onClick={() => multiPane.setFocused(props.paneId)}
+      onMouseDown={() => multiPane.setFocused(props.paneId)}
     >
       <header
         class="h-8 shrink-0 bg-background-base border-b flex items-center px-2 gap-1 justify-between"

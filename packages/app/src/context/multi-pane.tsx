@@ -22,6 +22,7 @@ type MultiPaneState = {
 }
 
 const MAX_PANES_PER_PAGE = 12
+const MAX_TOTAL_PANES = 48 // 4 pages worth
 
 function generatePaneId() {
   return Math.random().toString(36).slice(2, 10)
@@ -75,6 +76,9 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       customHeights: createMemo(() => store.customHeights),
 
       addPane(directory?: string, sessionId?: string) {
+        if (store.panes.length >= MAX_TOTAL_PANES) {
+          return undefined
+        }
         const id = generatePaneId()
         const pane: PaneConfig = { id, directory, sessionId }
         setStore("panes", [...store.panes, pane])

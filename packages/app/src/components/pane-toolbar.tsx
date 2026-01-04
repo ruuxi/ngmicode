@@ -3,6 +3,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { showToast } from "@opencode-ai/ui/toast"
 import { useMultiPane } from "@/context/multi-pane"
 import { useLayout } from "@/context/layout"
 import { useNavigate } from "@solidjs/router"
@@ -20,7 +21,13 @@ export function PaneToolbar() {
     const focusedPane = multiPane.focusedPane()
     // Use focused pane's directory, or fall back to most recent project
     const directory = focusedPane?.directory ?? layout.projects.list()[0]?.worktree
-    multiPane.addPane(directory)
+    const id = multiPane.addPane(directory)
+    if (!id) {
+      showToast({
+        title: "Tab limit reached",
+        description: "Maximum of 48 tabs allowed",
+      })
+    }
   }
 
   function handleRemovePane() {
