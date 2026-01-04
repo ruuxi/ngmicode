@@ -59,13 +59,6 @@ import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogWorktreeCleanup } from "@/components/dialog-worktree-cleanup"
 import { useServer } from "@/context/server"
 
-interface WorktreeSession extends Session {
-  worktree?: {
-    path: string
-    cleanup: "ask" | "always" | "never"
-  }
-}
-
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
     lastSession: {} as { [directory: string]: string },
@@ -346,14 +339,11 @@ export default function Layout(props: ParentProps) {
     const index = sessions.findIndex((s) => s.id === session.id)
     const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
-    // Cast to WorktreeSession to access worktree field
-    const worktreeSession = session as WorktreeSession
-
     // Check if session has worktree and needs confirmation
-    if (worktreeSession.worktree && worktreeSession.worktree.cleanup === "ask" && removeWorktree === undefined) {
+    if (session.worktree && session.worktree.cleanup === "ask" && removeWorktree === undefined) {
       dialog.show(() => (
         <DialogWorktreeCleanup
-          session={worktreeSession}
+          session={session}
           onConfirm={(shouldRemove) => archiveSession(session, shouldRemove)}
         />
       ))
@@ -361,14 +351,12 @@ export default function Layout(props: ParentProps) {
     }
 
     // If worktree needs to be removed, call the delete endpoint with removeWorktree flag
-    if (worktreeSession.worktree && removeWorktree) {
-      // SDK types need regeneration to include removeWorktree param
-      const deleteParams = {
+    if (session.worktree && removeWorktree) {
+      await globalSDK.client.session.delete({
         directory: session.directory,
         sessionID: session.id,
         removeWorktree: true,
-      }
-      await globalSDK.client.session.delete(deleteParams as Parameters<typeof globalSDK.client.session.delete>[0])
+      })
     } else {
       await globalSDK.client.session.update({
         directory: session.directory,

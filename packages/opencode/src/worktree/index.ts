@@ -72,12 +72,29 @@ export namespace Worktree {
     return createAtPath(worktreePath, branchName, input.cleanup ?? "ask")
   }
 
+  /**
+   * Check if a branch exists.
+   */
+  async function branchExists(branchName: string): Promise<boolean> {
+    const result = await $`git show-ref --verify --quiet refs/heads/${branchName}`
+      .cwd(Instance.worktree)
+      .quiet()
+      .nothrow()
+    return result.exitCode === 0
+  }
+
   async function createAtPath(
     worktreePath: string,
     branchName: string,
     cleanup: CleanupMode,
   ): Promise<Info> {
     log.info("creating worktree with branch", { path: worktreePath, branch: branchName })
+
+    // Check if branch already exists (e.g., from failed cleanup)
+    if (await branchExists(branchName)) {
+      log.warn("branch already exists, deleting before creating worktree", { branch: branchName })
+      await $`git branch -D ${branchName}`.cwd(Instance.worktree).quiet().nothrow()
+    }
 
     // Create worktree with a new branch at current HEAD
     const result = await $`git worktree add -b ${branchName} ${worktreePath}`
