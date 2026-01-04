@@ -36,6 +36,8 @@ import { Identifier } from "@/utils/id"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { usePermission } from "@/context/permission"
 import { WorktreeStatusIndicator } from "@/components/session-worktree-indicator"
+import { usePlatform } from "@/context/platform"
+import { VoiceButton } from "@/components/voice-button"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -103,6 +105,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const providers = useProviders()
   const command = useCommand()
   const permission = usePermission()
+  const platform = usePlatform()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -1648,6 +1651,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Icon name="photo" class="size-4.5" />
                   </Button>
                 </Tooltip>
+                <Show when={platform.platform === "tauri"}>
+                  <VoiceButton
+                    onTranscription={(text) => {
+                      // Insert transcribed text into the prompt
+                      if (text && editorRef) {
+                        const current = prompt.current()
+                        // Find existing text content or create new
+                        const textParts = current.filter((p) => p.type === "text")
+                        const existingText = textParts.map((p) => p.content).join("")
+                        const newContent = existingText ? `${existingText} ${text}` : text
+                        // Create new prompt with the text
+                        const newPrompt = [{ type: "text" as const, content: newContent, start: 0, end: newContent.length }]
+                        prompt.set(newPrompt, newContent.length)
+                        // Update editor display
+                        editorRef.textContent = newContent
+                        // Place cursor at end
+                        const range = document.createRange()
+                        const sel = window.getSelection()
+                        range.selectNodeContents(editorRef)
+                        range.collapse(false)
+                        sel?.removeAllRanges()
+                        sel?.addRange(range)
+                        editorRef.focus()
+                      }
+                    }}
+                  />
+                </Show>
               </Show>
             </div>
             <Tooltip

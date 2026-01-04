@@ -1,14 +1,18 @@
-import { Component, Show, createMemo } from "solid-js"
+import { Component, Show, Match, Switch as SolidSwitch, createMemo, createSignal } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { Popover } from "@opencode-ai/ui/popover"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Switch } from "@opencode-ai/ui/switch"
+import { ProgressCircle } from "@opencode-ai/ui/progress-circle"
 import { usePermission } from "@/context/permission"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
+import { useVoice } from "@/context/voice"
+import { usePlatform } from "@/context/platform"
+import { formatKeybind } from "@/context/command"
 
 export const SettingsPopover: Component = () => {
   const permission = usePermission()
@@ -16,10 +20,36 @@ export const SettingsPopover: Component = () => {
   const sdk = useSDK()
   const sync = useSync()
   const layout = useLayout()
+  const voice = useVoice()
+  const platform = usePlatform()
+  const [isCapturingKeybind, setIsCapturingKeybind] = createSignal(false)
+  const [capturedKeybind, setCapturedKeybind] = createSignal("")
 
   const sessionID = () => params.id
   const isGitProject = createMemo(() => sync.data.vcs !== undefined)
   const hasPermissions = createMemo(() => permission.permissionsEnabled() && sessionID())
+  const isTauri = () => platform.platform === "tauri"
+
+  const handleKeybindKeyDown = (e: KeyboardEvent) => {
+    if (!isCapturingKeybind()) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    const parts: string[] = []
+    if (e.ctrlKey || e.metaKey) parts.push("mod")
+    if (e.altKey) parts.push("alt")
+    if (e.shiftKey) parts.push("shift")
+
+    const key = e.key.toLowerCase()
+    if (!["control", "meta", "alt", "shift"].includes(key)) {
+      parts.push(key)
+      const newKeybind = parts.join("+")
+      setCapturedKeybind(newKeybind)
+      voice.settings.setKeybind(newKeybind)
+      setIsCapturingKeybind(false)
+    }
+  }
 
   return (
     <Popover
@@ -114,6 +144,92 @@ export const SettingsPopover: Component = () => {
                 </Show>
               </Button>
             </div>
+          </div>
+        </Show>
+
+        {/* Voice Input Section - only in Tauri */}
+        <Show when={isTauri()}>
+          <div class="border-t border-border-base" />
+          <div class="flex flex-col gap-2">
+            <div class="text-12-medium text-text-strong">Voice Input</div>
+
+            {/* Model Status */}
+            <div class="flex items-center gap-2">
+              <SolidSwitch>
+                <Match when={voice.state.modelStatus() === "not-downloaded"}>
+                  <div class="flex items-center gap-2 flex-1">
+                    <Icon name="microphone" size="small" class="text-icon-subtle" />
+                    <span class="text-13-regular text-text-base flex-1">Model not downloaded</span>
+                    <Button variant="primary" size="small" onClick={() => voice.actions.downloadModel()}>
+                      Download
+                    </Button>
+                  </div>
+                </Match>
+                <Match when={voice.state.modelStatus() === "downloading"}>
+                  <div class="flex items-center gap-2 flex-1">
+                    <ProgressCircle percentage={voice.state.downloadProgress() * 100} size={16} />
+                    <span class="text-13-regular text-text-base">
+                      Downloading... {Math.round(voice.state.downloadProgress() * 100)}%
+                    </span>
+                  </div>
+                </Match>
+                <Match when={voice.state.modelStatus() === "ready"}>
+                  <div class="flex items-center gap-2 flex-1">
+                    <Icon name="check" size="small" class="text-icon-success-base" />
+                    <span class="text-13-regular text-text-success-base">Model ready</span>
+                  </div>
+                </Match>
+                <Match when={voice.state.modelStatus() === "error"}>
+                  <div class="flex items-center gap-2 flex-1">
+                    <Icon name="circle-x" size="small" class="text-icon-critical-base" />
+                    <span class="text-13-regular text-text-critical-base flex-1 truncate">
+                      {voice.state.error() || "Error"}
+                    </span>
+                    <Button variant="ghost" size="small" onClick={() => voice.actions.downloadModel()}>
+                      Retry
+                    </Button>
+                  </div>
+                </Match>
+              </SolidSwitch>
+            </div>
+
+            {/* Hotkey */}
+            <Show when={voice.state.modelStatus() === "ready"}>
+              <div class="flex items-center gap-2">
+                <span class="text-12-regular text-text-subtle">Hotkey:</span>
+                <button
+                  type="button"
+                  class="px-2 py-1 rounded bg-surface-raised-base border border-border-base text-12-regular text-text-base font-mono"
+                  classList={{
+                    "ring-2 ring-border-focus-base": isCapturingKeybind(),
+                  }}
+                  onClick={() => {
+                    setCapturedKeybind(voice.settings.keybind())
+                    setIsCapturingKeybind(true)
+                  }}
+                  onKeyDown={handleKeybindKeyDown}
+                  onBlur={() => setIsCapturingKeybind(false)}
+                >
+                  <Show
+                    when={!isCapturingKeybind()}
+                    fallback={<span class="text-text-subtle">Press keys...</span>}
+                  >
+                    {formatKeybind(voice.settings.keybind())}
+                  </Show>
+                </button>
+              </div>
+              <Show when={!voice.settings.hasConfigured()}>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  class="justify-start"
+                  onClick={() => voice.settings.markConfigured()}
+                >
+                  <Icon name="check" size="small" />
+                  <span>Enable voice input</span>
+                </Button>
+              </Show>
+            </Show>
           </div>
         </Show>
 

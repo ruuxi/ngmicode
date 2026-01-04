@@ -1,3 +1,4 @@
+mod stt;
 mod window_customizer;
 
 use std::{
@@ -73,6 +74,57 @@ async fn get_logs(app: AppHandle) -> Result<String, String> {
         .map_err(|_| "Failed to acquire log lock")?;
 
     Ok(logs.iter().cloned().collect::<Vec<_>>().join(""))
+}
+
+// ============================================================================
+// Speech-to-Text Commands
+// ============================================================================
+
+#[tauri::command]
+async fn stt_get_status(app: AppHandle) -> Result<stt::SttStatus, String> {
+    let state = app
+        .try_state::<stt::SharedSttState>()
+        .ok_or("STT state not found")?;
+    let state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    Ok(state.get_status())
+}
+
+#[tauri::command]
+async fn stt_download_model(app: AppHandle) -> Result<(), String> {
+    stt::download_models(app).await
+}
+
+#[tauri::command]
+async fn stt_start_recording(app: AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<stt::SharedSttState>()
+        .ok_or("STT state not found")?;
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    state.start_recording()
+}
+
+#[tauri::command]
+async fn stt_push_audio(app: AppHandle, samples: Vec<f32>) -> Result<(), String> {
+    let state = app
+        .try_state::<stt::SharedSttState>()
+        .ok_or("STT state not found")?;
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    state.push_audio(samples)
+}
+
+#[tauri::command]
+async fn stt_stop_and_transcribe(app: AppHandle) -> Result<String, String> {
+    let state = app
+        .try_state::<stt::SharedSttState>()
+        .ok_or("STT state not found")?;
+
+    let audio = {
+        let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        state.stop_recording()
+    };
+
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    state.transcribe(&audio)
 }
 
 fn get_sidecar_port() -> u32 {
@@ -203,13 +255,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             kill_sidecar,
             copy_logs_to_clipboard,
-            get_logs
+            get_logs,
+            stt_get_status,
+            stt_download_model,
+            stt_start_recording,
+            stt_push_audio,
+            stt_stop_and_transcribe
         ])
         .setup(move |app| {
             let app = app.handle().clone();
 
             // Initialize log state
             app.manage(LogState(Arc::new(Mutex::new(VecDeque::new()))));
+
+            // Initialize STT state
+            app.manage(stt::init_stt_state(&app));
 
             tauri::async_runtime::spawn(async move {
                 let port = get_sidecar_port();

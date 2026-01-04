@@ -1,0 +1,240 @@
+import { createSignal, onCleanup, onMount } from "solid-js"
+import { createStore } from "solid-js/store"
+import { createSimpleContext } from "@opencode-ai/ui/context"
+import { persisted } from "@/utils/persist"
+import { usePlatform } from "./platform"
+import { useCommand } from "./command"
+import { AudioCapture, isAudioCaptureSupported } from "@/utils/audio-capture"
+
+export type ModelStatus = "not-downloaded" | "downloading" | "ready" | "error"
+
+type SttStatus = {
+  modelStatus:
+    | { type: "NotDownloaded" }
+    | { type: "Downloading"; progress: number }
+    | { type: "Ready" }
+    | { type: "Error"; message: string }
+  isRecording: boolean
+}
+
+export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
+  name: "Voice",
+  init: () => {
+    const platform = usePlatform()
+    const command = useCommand()
+    const isTauri = platform.platform === "tauri"
+    const invoke = platform.invoke
+    const listen = platform.listen
+
+    // Persisted settings
+    const [settings, setSettings, , ready] = persisted(
+      "voice.v1",
+      createStore({
+        keybind: "mod+shift+v",
+        hasConfigured: false,
+      }),
+    )
+
+    // Runtime state
+    const [isRecording, setIsRecording] = createSignal(false)
+    const [isTranscribing, setIsTranscribing] = createSignal(false)
+    const [modelStatus, setModelStatus] = createSignal<ModelStatus>("not-downloaded")
+    const [downloadProgress, setDownloadProgress] = createSignal(0)
+    const [lastTranscription, setLastTranscription] = createSignal<string | null>(null)
+    const [error, setError] = createSignal<string | null>(null)
+
+    // Audio capture instance
+    let audioCapture: AudioCapture | null = null
+
+    // Initialize on mount for Tauri
+    onMount(async () => {
+      if (!isTauri || !invoke) return
+
+      // Get initial status
+      try {
+        const status = await invoke<SttStatus>("stt_get_status")
+        if (status.modelStatus.type === "Ready") {
+          setModelStatus("ready")
+          // Auto-configure if models are ready on startup
+          if (!settings.hasConfigured) {
+            setSettings("hasConfigured", true)
+          }
+        } else if (status.modelStatus.type === "Downloading") {
+          setModelStatus("downloading")
+          setDownloadProgress(status.modelStatus.progress)
+        } else if (status.modelStatus.type === "Error") {
+          setModelStatus("error")
+          setError(status.modelStatus.message)
+        }
+      } catch (e) {
+        console.error("Failed to get STT status:", e)
+      }
+
+      // Listen for download progress events
+      if (listen) {
+        const unlisten = await listen<number>("stt:download-progress", (progress) => {
+          setDownloadProgress(progress)
+          if (progress >= 1) {
+            setModelStatus("ready")
+          }
+        })
+
+        onCleanup(() => {
+          unlisten()
+          if (audioCapture) {
+            audioCapture.stop()
+            audioCapture = null
+          }
+        })
+      }
+    })
+
+    const downloadModel = async () => {
+      if (!isTauri || !invoke) return
+
+      setModelStatus("downloading")
+      setDownloadProgress(0)
+      setError(null)
+
+      try {
+        await invoke("stt_download_model")
+        setModelStatus("ready")
+      } catch (e) {
+        setModelStatus("error")
+        setError(e instanceof Error ? e.message : String(e))
+        console.error("Failed to download model:", e)
+      }
+    }
+
+    const startRecording = async () => {
+      if (!isTauri || !invoke || !isAudioCaptureSupported()) {
+        setError("Audio capture not supported")
+        return
+      }
+
+      if (modelStatus() !== "ready") {
+        setError("Model not ready")
+        return
+      }
+
+      if (isRecording()) return
+
+      setError(null)
+      setLastTranscription(null)
+
+      try {
+        // Tell backend we're starting
+        await invoke("stt_start_recording")
+
+        // Start audio capture
+        audioCapture = new AudioCapture()
+        await audioCapture.start(async (samples) => {
+          // Send audio chunks to backend
+          try {
+            await invoke("stt_push_audio", { samples: Array.from(samples) })
+          } catch (e) {
+            console.error("Failed to push audio:", e)
+          }
+        })
+
+        setIsRecording(true)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+        console.error("Failed to start recording:", e)
+      }
+    }
+
+    const stopRecording = async () => {
+      if (!isRecording() || !invoke) return
+
+      // Stop audio capture
+      if (audioCapture) {
+        audioCapture.stop()
+        audioCapture = null
+      }
+
+      setIsRecording(false)
+      setIsTranscribing(true)
+
+      try {
+        // Get transcription from backend
+        const text = await invoke<string>("stt_stop_and_transcribe")
+        setLastTranscription(text)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+        console.error("Failed to transcribe:", e)
+      } finally {
+        setIsTranscribing(false)
+      }
+    }
+
+    const toggle = async () => {
+      if (isRecording()) {
+        await stopRecording()
+      } else {
+        await startRecording()
+      }
+    }
+
+    const clearTranscription = () => {
+      setLastTranscription(null)
+    }
+
+    // Register voice toggle command with keybind system
+    if (isTauri) {
+      command.register(() => [
+        {
+          id: "voice.toggle",
+          title: "Toggle Voice Input",
+          category: "Voice",
+          keybind: settings.keybind,
+          disabled: modelStatus() !== "ready" || !settings.hasConfigured,
+          onSelect: () => {
+            if (settings.hasConfigured && modelStatus() === "ready") {
+              toggle()
+            }
+          },
+        },
+      ])
+    }
+
+    const markConfigured = () => {
+      setSettings("hasConfigured", true)
+    }
+
+    const setKeybind = (keybind: string) => {
+      setSettings("keybind", keybind)
+    }
+
+    return {
+      // Settings
+      settings: {
+        keybind: () => settings.keybind,
+        setKeybind,
+        hasConfigured: () => settings.hasConfigured,
+        markConfigured,
+        ready,
+      },
+
+      // State
+      state: {
+        isRecording,
+        isTranscribing,
+        modelStatus,
+        downloadProgress,
+        lastTranscription,
+        error,
+        isSupported: () => isTauri && isAudioCaptureSupported(),
+      },
+
+      // Actions
+      actions: {
+        downloadModel,
+        startRecording,
+        stopRecording,
+        toggle,
+        clearTranscription,
+      },
+    }
+  },
+})
