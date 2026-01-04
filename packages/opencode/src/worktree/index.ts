@@ -7,8 +7,8 @@ import { Global } from "../global"
 import { Instance } from "../project/instance"
 import { Project } from "../project/project"
 import { fn } from "../util/fn"
+import { Config } from "@/config/config"
 import { Log } from "../util/log"
-
 export namespace Worktree {
   const log = Log.create({ service: "worktree" })
 
@@ -435,6 +435,12 @@ export namespace Worktree {
       throw new StartCommandFailedError({ message: errorText(ran) || "Worktree start command failed" })
     }
 
+    const opencodeDir = path.join(info.directory, ".opencode")
+    if (await Bun.file(opencodeDir).exists()) {
+      await Config.installDependencies(info.directory)
+    }
+
     return info
   })
 }
+
