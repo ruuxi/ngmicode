@@ -269,13 +269,13 @@ export namespace SessionPrompt {
     // If session has worktree, run in worktree context
     if (session.worktree?.path) {
       log.info("running loop in worktree context", { sessionID, worktree: session.worktree.path })
-      return Instance.provide({
+      return await Instance.provide({
         directory: session.worktree.path,
         fn: () => runLoop(sessionID, session, abort),
       })
     }
 
-    return runLoop(sessionID, session, abort)
+    return await runLoop(sessionID, session, abort)
   })
 
   async function runLoop(
