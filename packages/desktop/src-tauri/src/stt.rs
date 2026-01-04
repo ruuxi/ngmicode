@@ -11,6 +11,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use futures_util::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 const MODEL_NAME: &str = "parakeet-tdt-0.6b-v3";
 const HF_BASE_URL: &str =
@@ -27,7 +29,7 @@ const MODEL_FILES: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "type")]
 pub enum ModelStatus {
     NotDownloaded,
     Downloading { progress: f32 },
@@ -93,7 +95,6 @@ impl SttState {
 
     fn are_models_downloaded(model_dir: &PathBuf) -> bool {
         MODEL_FILES.iter().all(|file| model_dir.join(file).exists())
-            && model_dir.join("nemo128.onnx").exists()
     }
 
     pub fn get_status(&self) -> SttStatus {
@@ -389,7 +390,7 @@ impl SttState {
                     (state1_shape[0], state1_shape[1], state1_shape[2]),
                     new_state1_data.1.to_vec(),
                 )
-                .unwrap();
+                .map_err(|e| format!("Failed to reshape state1: {}", e))?;
 
                 let state2_shape: Vec<usize> =
                     new_state2_data.0.iter().map(|&x| x as usize).collect();
@@ -397,7 +398,7 @@ impl SttState {
                     (state2_shape[0], state2_shape[1], state2_shape[2]),
                     new_state2_data.1.to_vec(),
                 )
-                .unwrap();
+                .map_err(|e| format!("Failed to reshape state2: {}", e))?;
 
                 tokens.push(token);
                 emitted_tokens += 1;
@@ -446,7 +447,7 @@ pub fn init_stt_state(app: &AppHandle) -> SharedSttState {
     Arc::new(Mutex::new(SttState::new(model_dir)))
 }
 
-/// Download a single model file
+/// Download a single model file with streaming (avoids loading entire file into memory)
 async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> Result<(), String> {
     let response = client
         .get(url)
@@ -462,12 +463,21 @@ async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> R
         ));
     }
 
-    let bytes = response
-        .bytes()
+    let mut file = tokio::fs::File::create(path)
         .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
+        .map_err(|e| format!("Failed to create file: {}", e))?;
 
-    std::fs::write(path, bytes).map_err(|e| format!("Failed to write file: {}", e))?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download error: {}", e))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
+    }
+
+    file.flush()
+        .await
+        .map_err(|e| format!("Flush error: {}", e))?;
 
     Ok(())
 }
