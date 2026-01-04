@@ -52,12 +52,76 @@ import { PlanMode } from "@/session/plan-mode"
 import { Skill } from "@/skill/skill"
 import { Installation } from "@/installation"
 import { MDNS } from "./mdns"
+import { Cache } from "@/cache"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace Server {
   const log = Log.create({ service: "server" })
+
+  /**
+   * Populate cache from filesystem sessions
+   */
+  async function populateSessionCache() {
+    const sessions = await Array.fromAsync(Session.list())
+    for (const session of sessions) {
+      Cache.Session.upsert({
+        id: session.id,
+        projectID: session.projectID,
+        parentID: session.parentID,
+        title: session.title,
+        directory: session.directory,
+        version: session.version,
+        time: {
+          created: session.time.created,
+          updated: session.time.updated,
+          archived: session.time.archived,
+        },
+        summary: session.summary
+          ? {
+              additions: session.summary.additions,
+              deletions: session.summary.deletions,
+              files: session.summary.files,
+            }
+          : undefined,
+        share: session.share,
+        worktree: session.worktree,
+      })
+    }
+  }
+
+  /**
+   * Convert cache row to Session.Info format
+   */
+  function cacheRowToSessionInfo(row: ReturnType<typeof Cache.Session.read>): Session.Info | null {
+    if (!row) return null
+    return {
+      id: row.id as `session_${string}`,
+      projectID: row.projectID,
+      directory: row.directory,
+      parentID: row.parentID as `session_${string}` | undefined,
+      title: row.title,
+      version: row.version ?? "",
+      time: {
+        created: row.created_at ?? Date.now(),
+        updated: row.updated_at ?? Date.now(),
+        archived: row.archived_at ?? undefined,
+      },
+      summary: row.additions || row.deletions || row.files_changed
+        ? {
+            additions: row.additions,
+            deletions: row.deletions,
+            files: row.files_changed,
+          }
+        : undefined,
+      share: row.share_url ? { url: row.share_url } : undefined,
+      worktree:
+        row.worktree_path && row.worktree_branch
+          ? { path: row.worktree_path, branch: row.worktree_branch, cleanup: "ask" as const }
+          : undefined,
+    }
+  }
 
   let _url: URL | undefined
   let _corsWhitelist: string[] = []
@@ -678,12 +742,22 @@ export namespace Server {
           },
         }),
         async (c) => {
-          const sessions = await Array.fromAsync(Session.list())
-          pipe(
-            await Array.fromAsync(Session.list()),
-            filter((s) => !s.time.archived),
-            sortBy((s) => s.time.updated),
-          )
+          // Try cache first
+          const projectID = Instance.project.id
+          let cachedSessions = Cache.Session.list(projectID)
+
+          // If cache is empty, populate from filesystem
+          if (cachedSessions.length === 0) {
+            await populateSessionCache()
+            cachedSessions = Cache.Session.list(projectID)
+          }
+
+          // Convert cache rows to Session.Info format
+          const sessions = cachedSessions
+            .map(cacheRowToSessionInfo)
+            .filter((s): s is Session.Info => s !== null && !s.time.archived)
+            .sort((a, b) => b.time.updated - a.time.updated)
+
           return c.json(sessions)
         },
       )
@@ -739,6 +813,31 @@ export namespace Server {
           const sessionID = c.req.valid("param").sessionID
           log.info("SEARCH", { url: c.req.url })
           const session = await Session.get(sessionID)
+
+          // Update cache with complete session data
+          Cache.Session.upsert({
+            id: session.id,
+            projectID: session.projectID,
+            parentID: session.parentID,
+            title: session.title,
+            directory: session.directory,
+            version: session.version,
+            time: {
+              created: session.time.created,
+              updated: session.time.updated,
+              archived: session.time.archived,
+            },
+            summary: session.summary
+              ? {
+                  additions: session.summary.additions,
+                  deletions: session.summary.deletions,
+                  files: session.summary.files,
+                }
+              : undefined,
+            share: session.share,
+            worktree: session.worktree,
+          })
+
           return c.json(session)
         },
       )
