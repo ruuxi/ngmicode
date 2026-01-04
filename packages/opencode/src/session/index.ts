@@ -17,6 +17,7 @@ import { fn } from "@/util/fn"
 import { Command } from "../command"
 import { Snapshot } from "@/snapshot"
 import { Worktree } from "@/worktree"
+import { Cache } from "@/cache"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -232,6 +233,23 @@ export namespace Session {
     }
     log.info("created", result)
     await Storage.write(["session", Instance.project.id, result.id], result)
+
+    // Update cache
+    Cache.Session.upsert({
+      id: result.id,
+      projectID: result.projectID,
+      parentID: result.parentID,
+      title: result.title,
+      directory: result.directory,
+      version: result.version,
+      time: {
+        created: result.time.created,
+        updated: result.time.updated,
+        archived: result.time.archived,
+      },
+      worktree: result.worktree,
+    })
+
     Bus.publish(Event.Created, {
       info: result,
     })
@@ -291,6 +309,31 @@ export namespace Session {
       editor(draft)
       draft.time.updated = Date.now()
     })
+
+    // Update cache
+    Cache.Session.upsert({
+      id: result.id,
+      projectID: result.projectID,
+      parentID: result.parentID,
+      title: result.title,
+      directory: result.directory,
+      version: result.version,
+      time: {
+        created: result.time.created,
+        updated: result.time.updated,
+        archived: result.time.archived,
+      },
+      summary: result.summary
+        ? {
+            additions: result.summary.additions,
+            deletions: result.summary.deletions,
+            files: result.summary.files,
+          }
+        : undefined,
+      share: result.share,
+      worktree: result.worktree,
+    })
+
     Bus.publish(Event.Updated, {
       info: result,
     })
@@ -379,6 +422,10 @@ export namespace Session {
           await Storage.remove(msg)
         }
         await Storage.remove(["session", project.id, input.sessionID])
+
+        // Remove from cache
+        Cache.Session.remove(input.sessionID)
+
         Bus.publish(Event.Deleted, {
           info: session,
         })
