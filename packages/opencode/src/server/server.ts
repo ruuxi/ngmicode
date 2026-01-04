@@ -1629,7 +1629,11 @@ export namespace Server {
             return c.json(false)
           }
           const { Worktree } = await import("@/worktree")
-          await Worktree.remove(session.worktree.path)
+          await Worktree.remove({
+            path: session.worktree.path,
+            branch: session.worktree.branch,
+            deleteBranch: true,
+          })
           // Update session to remove worktree info
           await Session.update(sessionID, (draft) => {
             draft.worktree = undefined

@@ -14,6 +14,7 @@ export namespace Worktree {
   export const Info = z
     .object({
       path: z.string(),
+      branch: z.string(),
       cleanup: CleanupMode.default("ask"),
     })
     .meta({
@@ -33,39 +34,53 @@ export namespace Worktree {
   }
 
   /**
-   * Create a detached worktree for a session.
-   * Uses current HEAD as the starting point.
+   * Get the branch name for a session worktree.
+   */
+  export function getBranchName(sessionID: string): string {
+    return `opencode/session-${sessionID}`
+  }
+
+  /**
+   * Create a worktree with a dedicated branch for a session.
+   * Creates branch opencode/session-{sessionID} at current HEAD.
    */
   export async function create(input: {
     sessionID: string
     cleanup?: CleanupMode
   }): Promise<Info> {
     const worktreePath = getPath(input.sessionID)
+    const branchName = getBranchName(input.sessionID)
 
     // Check if path already exists
-    const exists = await fs
+    const pathExists = await fs
       .access(worktreePath)
       .then(() => true)
       .catch(() => false)
 
-    if (exists) {
+    if (pathExists) {
       // Try with a unique suffix
-      const uniquePath = `${worktreePath}-${Date.now()}`
+      const uniqueSuffix = Date.now().toString(36)
+      const uniquePath = `${worktreePath}-${uniqueSuffix}`
+      const uniqueBranch = `${branchName}-${uniqueSuffix}`
       log.warn("worktree path exists, using unique suffix", {
         original: worktreePath,
         unique: uniquePath,
       })
-      return createAtPath(uniquePath, input.cleanup ?? "ask")
+      return createAtPath(uniquePath, uniqueBranch, input.cleanup ?? "ask")
     }
 
-    return createAtPath(worktreePath, input.cleanup ?? "ask")
+    return createAtPath(worktreePath, branchName, input.cleanup ?? "ask")
   }
 
-  async function createAtPath(worktreePath: string, cleanup: CleanupMode): Promise<Info> {
-    log.info("creating worktree", { path: worktreePath })
+  async function createAtPath(
+    worktreePath: string,
+    branchName: string,
+    cleanup: CleanupMode,
+  ): Promise<Info> {
+    log.info("creating worktree with branch", { path: worktreePath, branch: branchName })
 
-    // Create worktree with detached HEAD at current commit
-    const result = await $`git worktree add --detach ${worktreePath}`
+    // Create worktree with a new branch at current HEAD
+    const result = await $`git worktree add -b ${branchName} ${worktreePath}`
       .cwd(Instance.worktree)
       .quiet()
       .nothrow()
@@ -74,6 +89,7 @@ export namespace Worktree {
       const stderr = result.stderr.toString()
       log.error("failed to create worktree", {
         path: worktreePath,
+        branch: branchName,
         exitCode: result.exitCode,
         stderr,
       })
@@ -84,19 +100,25 @@ export namespace Worktree {
       })
     }
 
-    log.info("worktree created", { path: worktreePath })
+    log.info("worktree created", { path: worktreePath, branch: branchName })
 
     return {
       path: worktreePath,
+      branch: branchName,
       cleanup,
     }
   }
 
   /**
-   * Remove a worktree.
+   * Remove a worktree and optionally its branch.
    */
-  export async function remove(worktreePath: string): Promise<void> {
-    log.info("removing worktree", { path: worktreePath })
+  export async function remove(input: {
+    path: string
+    branch?: string
+    deleteBranch?: boolean
+  }): Promise<void> {
+    const { path: worktreePath, branch, deleteBranch = true } = input
+    log.info("removing worktree", { path: worktreePath, branch, deleteBranch })
 
     // First try git worktree remove
     const result = await $`git worktree remove ${worktreePath} --force`
@@ -125,10 +147,28 @@ export namespace Worktree {
           message: "Failed to remove worktree",
         })
       }
-      return
+    } else {
+      log.info("worktree removed", { path: worktreePath })
     }
 
-    log.info("worktree removed", { path: worktreePath })
+    // Delete the branch if requested
+    if (branch && deleteBranch) {
+      log.info("deleting branch", { branch })
+      const branchResult = await $`git branch -D ${branch}`
+        .cwd(Instance.worktree)
+        .quiet()
+        .nothrow()
+
+      if (branchResult.exitCode !== 0) {
+        log.warn("failed to delete branch", {
+          branch,
+          stderr: branchResult.stderr.toString(),
+        })
+        // Don't throw - worktree is already removed, branch cleanup is best-effort
+      } else {
+        log.info("branch deleted", { branch })
+      }
+    }
   }
 
   /**
