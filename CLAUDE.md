@@ -14,9 +14,10 @@ bun run tauri dev
 # Type checking
 bun turbo typecheck
 
-# Tests (run from packages/opencode, not root)
+# Tests - uses Bun's built-in test runner (run from packages/opencode, not root)
 cd packages/opencode && bun test
-bun test <file>      # Single test file
+bun test <file>           # Single test file
+bun test --coverage       # Run with coverage report
 
 # Regenerate SDK after API changes
 ./packages/sdk/js/script/build.ts
@@ -82,6 +83,7 @@ Custom agents: `.opencode/agent/*.md` files or `opencode.json` config.
 
 ## Code Style
 
+- Write tests for new features and bug fixes in `packages/opencode/test/`
 - Keep logic in single functions unless reusable
 - Avoid `else` statements, `try/catch`, `let`, and `any`
 - Prefer single-word variable names when descriptive
@@ -95,3 +97,62 @@ Custom agents: `.opencode/agent/*.md` files or `opencode.json` config.
 - **Path aliases**: `@/` maps to `src/`
 - **Prompts**: Stored as `.txt` files imported as strings
 - **Lazy init**: `lazy()` utility for deferred expensive operations
+
+## Testing
+
+Uses **Bun's built-in test runner** (`bun:test`). Tests are located in `packages/opencode/test/`.
+
+```typescript
+import { describe, expect, test } from "bun:test"
+
+describe("feature", () => {
+  test("behavior", async () => {
+    // test code
+  })
+})
+```
+
+- **Config**: `packages/opencode/bunfig.toml` (10s timeout, coverage enabled)
+- **Preload**: `test/preload.ts` sets up isolated temp directories
+- **Naming**: `*.test.ts` files in `test/` mirroring `src/` structure
+
+### Creating Tests
+
+Use `tmpdir` fixture for isolated test directories with automatic cleanup:
+
+```typescript
+import { tmpdir } from "../fixture/fixture"
+import { Instance } from "../../src/project/instance"
+
+test("example", async () => {
+  await using tmp = await tmpdir({ git: true })  // auto-cleanup via Symbol.asyncDispose
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // test code runs in isolated project context
+    },
+  })
+})
+```
+
+For tool tests, create a mock context:
+
+```typescript
+const ctx = {
+  sessionID: "test",
+  messageID: "",
+  callID: "",
+  agent: "build",
+  abort: AbortSignal.any([]),
+  metadata: () => {},
+  ask: async () => {},
+}
+```
+
+`tmpdir` options: `{ git: true }` initializes git repo, `{ config: {...} }` creates `opencode.json`
+
+### When to Write Tests
+
+- New features: Add tests covering the main functionality
+- Bug fixes: Add a test that reproduces the bug before fixing
+- Run `bun test` from `packages/opencode` to verify before committing
