@@ -353,8 +353,12 @@ export namespace Session {
 
           if (shouldRemove) {
             try {
-              await Worktree.remove(session.worktree.path)
-              log.info("removed worktree", { path: session.worktree.path })
+              await Worktree.remove({
+                path: session.worktree.path,
+                branch: session.worktree.branch,
+                deleteBranch: true,
+              })
+              log.info("removed worktree", { path: session.worktree.path, branch: session.worktree.branch })
             } catch (err) {
               log.warn("failed to remove worktree", { path: session.worktree.path, error: err })
               // Continue with session deletion even if worktree removal fails

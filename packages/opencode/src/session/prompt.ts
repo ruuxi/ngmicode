@@ -264,8 +264,26 @@ export namespace SessionPrompt {
 
     using _ = defer(() => cancel(sessionID))
 
-    let step = 0
     const session = await Session.get(sessionID)
+
+    // If session has worktree, run in worktree context
+    if (session.worktree?.path) {
+      log.info("running loop in worktree context", { sessionID, worktree: session.worktree.path })
+      return Instance.provide({
+        directory: session.worktree.path,
+        fn: () => runLoop(sessionID, session, abort),
+      })
+    }
+
+    return runLoop(sessionID, session, abort)
+  })
+
+  async function runLoop(
+    sessionID: string,
+    session: Session.Info,
+    abort: AbortSignal,
+  ): Promise<MessageV2.WithParts> {
+    let step = 0
     while (true) {
       SessionStatus.set(sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
@@ -719,7 +737,7 @@ export namespace SessionPrompt {
       return item
     }
     throw new Error("Impossible")
-  })
+  }
 
   async function lastModel(sessionID: string) {
     for await (const item of MessageV2.stream(sessionID)) {
