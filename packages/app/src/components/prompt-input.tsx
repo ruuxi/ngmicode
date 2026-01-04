@@ -25,6 +25,7 @@ import { Select } from "@opencode-ai/ui/select"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { showToast } from "@opencode-ai/ui/toast"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { SettingsPopover } from "@/components/settings-popover"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
@@ -1201,11 +1202,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!existing) {
       const worktreeEnabled = layout.worktree.enabled()
       const worktreeCleanup = layout.worktree.cleanup()
-      // SDK types need regeneration to include worktree params
-      const createParams = worktreeEnabled
-        ? { useWorktree: true, worktreeCleanup }
-        : {}
-      const created = await sdk.client.session.create(createParams as Parameters<typeof sdk.client.session.create>[0])
+      const created = await sdk.client.session.create(
+        worktreeEnabled ? { useWorktree: true, worktreeCleanup } : {},
+      )
       existing = created.data ?? undefined
       if (existing) {
         if (props.onSessionCreated) {
@@ -1295,6 +1294,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         })
         .catch((e) => {
           console.error("Failed to send shell command", e)
+          showToast({
+            variant: "error",
+            title: "Failed to send command",
+            description: "Please try again.",
+          })
         })
       return
     }
@@ -1315,6 +1319,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
           .catch((e) => {
             console.error("Failed to send command", e)
+            showToast({
+              variant: "error",
+              title: "Failed to send command",
+              description: "Please try again.",
+            })
           })
         return
       }
@@ -1352,6 +1361,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
       .catch((e) => {
         console.error("Failed to send prompt", e)
+        showToast({
+          variant: "error",
+          title: "Failed to send message",
+          description: "Please try again.",
+        })
       })
   }
 

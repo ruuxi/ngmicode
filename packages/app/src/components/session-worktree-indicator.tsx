@@ -3,14 +3,6 @@ import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Icon } from "@opencode-ai/ui/icon"
-import type { Session } from "@opencode-ai/sdk/v2"
-
-interface WorktreeSession extends Session {
-  worktree?: {
-    path: string
-    cleanup: "ask" | "always" | "never"
-  }
-}
 
 /** Compact worktree status indicator for the prompt bar area */
 export function WorktreeStatusIndicator() {
@@ -18,7 +10,7 @@ export function WorktreeStatusIndicator() {
   const params = useParams()
 
   const currentSession = createMemo(() => {
-    const sessions = (sync.data.session ?? []) as WorktreeSession[]
+    const sessions = sync.data.session ?? []
     return sessions.find((s) => s.id === params.id)
   })
 

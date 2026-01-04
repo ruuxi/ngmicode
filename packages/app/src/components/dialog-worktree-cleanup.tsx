@@ -4,15 +4,8 @@ import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import type { Session } from "@opencode-ai/sdk/v2"
 
-interface WorktreeSession extends Session {
-  worktree?: {
-    path: string
-    cleanup: "ask" | "always" | "never"
-  }
-}
-
 export function DialogWorktreeCleanup(props: {
-  session: WorktreeSession
+  session: Session
   onConfirm: (removeWorktree: boolean) => void
 }) {
   const dialog = useDialog()

@@ -4,20 +4,6 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
 export type Project = {
   id: string
   worktree: string
@@ -43,6 +29,20 @@ export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
     directory: string
+  }
+}
+
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
   }
 }
 
@@ -550,48 +550,6 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventTuiPromptAppend = {
-  type: "tui.prompt.append"
-  properties: {
-    text: string
-  }
-}
-
-export type EventTuiCommandExecute = {
-  type: "tui.command.execute"
-  properties: {
-    command:
-      | "session.list"
-      | "session.new"
-      | "session.share"
-      | "session.interrupt"
-      | "session.compact"
-      | "session.page.up"
-      | "session.page.down"
-      | "session.half.page.up"
-      | "session.half.page.down"
-      | "session.first"
-      | "session.last"
-      | "prompt.clear"
-      | "prompt.submit"
-      | "agent.cycle"
-      | string
-  }
-}
-
-export type EventTuiToastShow = {
-  type: "tui.toast.show"
-  properties: {
-    title?: string
-    message: string
-    variant: "info" | "success" | "warning" | "error"
-    /**
-     * Duration in milliseconds
-     */
-    duration?: number
-  }
-}
-
 export type EventMcpToolsChanged = {
   type: "mcp.tools.changed"
   properties: {
@@ -609,6 +567,54 @@ export type EventCommandExecuted = {
   }
 }
 
+export type EventAskuserAsked = {
+  type: "askuser.asked"
+  properties: {
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{
+        label: string
+        description: string
+      }>
+      multiSelect: boolean
+    }>
+  }
+}
+
+export type EventAskuserReplied = {
+  type: "askuser.replied"
+  properties: {
+    requestID: string
+    answers: {
+      [key: string]: string
+    }
+  }
+}
+
+export type EventPlanmodeReview = {
+  type: "planmode.review"
+  properties: {
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    plan: string
+  }
+}
+
+export type EventPlanmodeResponded = {
+  type: "planmode.responded"
+  properties: {
+    requestID: string
+    approved: boolean
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -618,6 +624,12 @@ export type PermissionRule = {
 }
 
 export type PermissionRuleset = Array<PermissionRule>
+
+export type WorktreeInfo = {
+  path: string
+  branch: string
+  cleanup?: "ask" | "always" | "never"
+}
 
 export type Session = {
   id: string
@@ -648,6 +660,7 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  worktree?: WorktreeInfo
 }
 
 export type EventSessionCreated = {
@@ -756,10 +769,10 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
   | EventProjectUpdated
   | EventServerInstanceDisposed
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMessageUpdated
@@ -773,11 +786,12 @@ export type Event =
   | EventSessionCompacted
   | EventFileEdited
   | EventTodoUpdated
-  | EventTuiPromptAppend
-  | EventTuiCommandExecute
-  | EventTuiToastShow
   | EventMcpToolsChanged
   | EventCommandExecuted
+  | EventAskuserAsked
+  | EventAskuserReplied
+  | EventPlanmodeReview
+  | EventPlanmodeResponded
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -810,360 +824,6 @@ export type NotFoundError = {
   data: {
     message: string
   }
-}
-
-/**
- * Custom keybind configurations
- */
-export type KeybindsConfig = {
-  /**
-   * Leader key for keybind combinations
-   */
-  leader?: string
-  /**
-   * Exit the application
-   */
-  app_exit?: string
-  /**
-   * Open external editor
-   */
-  editor_open?: string
-  /**
-   * List available themes
-   */
-  theme_list?: string
-  /**
-   * Toggle sidebar
-   */
-  sidebar_toggle?: string
-  /**
-   * Toggle session scrollbar
-   */
-  scrollbar_toggle?: string
-  /**
-   * Toggle username visibility
-   */
-  username_toggle?: string
-  /**
-   * View status
-   */
-  status_view?: string
-  /**
-   * Export session to editor
-   */
-  session_export?: string
-  /**
-   * Create a new session
-   */
-  session_new?: string
-  /**
-   * List all sessions
-   */
-  session_list?: string
-  /**
-   * Show session timeline
-   */
-  session_timeline?: string
-  /**
-   * Fork session from message
-   */
-  session_fork?: string
-  /**
-   * Rename session
-   */
-  session_rename?: string
-  /**
-   * Share current session
-   */
-  session_share?: string
-  /**
-   * Unshare current session
-   */
-  session_unshare?: string
-  /**
-   * Interrupt current session
-   */
-  session_interrupt?: string
-  /**
-   * Compact the session
-   */
-  session_compact?: string
-  /**
-   * Scroll messages up by one page
-   */
-  messages_page_up?: string
-  /**
-   * Scroll messages down by one page
-   */
-  messages_page_down?: string
-  /**
-   * Scroll messages up by half page
-   */
-  messages_half_page_up?: string
-  /**
-   * Scroll messages down by half page
-   */
-  messages_half_page_down?: string
-  /**
-   * Navigate to first message
-   */
-  messages_first?: string
-  /**
-   * Navigate to last message
-   */
-  messages_last?: string
-  /**
-   * Navigate to next message
-   */
-  messages_next?: string
-  /**
-   * Navigate to previous message
-   */
-  messages_previous?: string
-  /**
-   * Navigate to last user message
-   */
-  messages_last_user?: string
-  /**
-   * Copy message
-   */
-  messages_copy?: string
-  /**
-   * Undo message
-   */
-  messages_undo?: string
-  /**
-   * Redo message
-   */
-  messages_redo?: string
-  /**
-   * Toggle code block concealment in messages
-   */
-  messages_toggle_conceal?: string
-  /**
-   * Toggle tool details visibility
-   */
-  tool_details?: string
-  /**
-   * List available models
-   */
-  model_list?: string
-  /**
-   * Next recently used model
-   */
-  model_cycle_recent?: string
-  /**
-   * Previous recently used model
-   */
-  model_cycle_recent_reverse?: string
-  /**
-   * Next favorite model
-   */
-  model_cycle_favorite?: string
-  /**
-   * Previous favorite model
-   */
-  model_cycle_favorite_reverse?: string
-  /**
-   * List available commands
-   */
-  command_list?: string
-  /**
-   * List agents
-   */
-  agent_list?: string
-  /**
-   * Next agent
-   */
-  agent_cycle?: string
-  /**
-   * Previous agent
-   */
-  agent_cycle_reverse?: string
-  /**
-   * Cycle model variants
-   */
-  variant_cycle?: string
-  /**
-   * Clear input field
-   */
-  input_clear?: string
-  /**
-   * Paste from clipboard
-   */
-  input_paste?: string
-  /**
-   * Submit input
-   */
-  input_submit?: string
-  /**
-   * Insert newline in input
-   */
-  input_newline?: string
-  /**
-   * Move cursor left in input
-   */
-  input_move_left?: string
-  /**
-   * Move cursor right in input
-   */
-  input_move_right?: string
-  /**
-   * Move cursor up in input
-   */
-  input_move_up?: string
-  /**
-   * Move cursor down in input
-   */
-  input_move_down?: string
-  /**
-   * Select left in input
-   */
-  input_select_left?: string
-  /**
-   * Select right in input
-   */
-  input_select_right?: string
-  /**
-   * Select up in input
-   */
-  input_select_up?: string
-  /**
-   * Select down in input
-   */
-  input_select_down?: string
-  /**
-   * Move to start of line in input
-   */
-  input_line_home?: string
-  /**
-   * Move to end of line in input
-   */
-  input_line_end?: string
-  /**
-   * Select to start of line in input
-   */
-  input_select_line_home?: string
-  /**
-   * Select to end of line in input
-   */
-  input_select_line_end?: string
-  /**
-   * Move to start of visual line in input
-   */
-  input_visual_line_home?: string
-  /**
-   * Move to end of visual line in input
-   */
-  input_visual_line_end?: string
-  /**
-   * Select to start of visual line in input
-   */
-  input_select_visual_line_home?: string
-  /**
-   * Select to end of visual line in input
-   */
-  input_select_visual_line_end?: string
-  /**
-   * Move to start of buffer in input
-   */
-  input_buffer_home?: string
-  /**
-   * Move to end of buffer in input
-   */
-  input_buffer_end?: string
-  /**
-   * Select to start of buffer in input
-   */
-  input_select_buffer_home?: string
-  /**
-   * Select to end of buffer in input
-   */
-  input_select_buffer_end?: string
-  /**
-   * Delete line in input
-   */
-  input_delete_line?: string
-  /**
-   * Delete to end of line in input
-   */
-  input_delete_to_line_end?: string
-  /**
-   * Delete to start of line in input
-   */
-  input_delete_to_line_start?: string
-  /**
-   * Backspace in input
-   */
-  input_backspace?: string
-  /**
-   * Delete character in input
-   */
-  input_delete?: string
-  /**
-   * Undo in input
-   */
-  input_undo?: string
-  /**
-   * Redo in input
-   */
-  input_redo?: string
-  /**
-   * Move word forward in input
-   */
-  input_word_forward?: string
-  /**
-   * Move word backward in input
-   */
-  input_word_backward?: string
-  /**
-   * Select word forward in input
-   */
-  input_select_word_forward?: string
-  /**
-   * Select word backward in input
-   */
-  input_select_word_backward?: string
-  /**
-   * Delete word forward in input
-   */
-  input_delete_word_forward?: string
-  /**
-   * Delete word backward in input
-   */
-  input_delete_word_backward?: string
-  /**
-   * Previous history item
-   */
-  history_previous?: string
-  /**
-   * Next history item
-   */
-  history_next?: string
-  /**
-   * Next child session
-   */
-  session_child_cycle?: string
-  /**
-   * Previous child session
-   */
-  session_child_cycle_reverse?: string
-  /**
-   * Go to parent session
-   */
-  session_parent?: string
-  /**
-   * Suspend terminal
-   */
-  terminal_suspend?: string
-  /**
-   * Toggle terminal title
-   */
-  terminal_title_toggle?: string
-  /**
-   * Toggle tips on home screen
-   */
-  tips_toggle?: string
 }
 
 /**
@@ -1441,34 +1101,7 @@ export type Config = {
    * JSON schema reference for configuration validation
    */
   $schema?: string
-  /**
-   * Theme name to use for the interface
-   */
-  theme?: string
-  keybinds?: KeybindsConfig
   logLevel?: LogLevel
-  /**
-   * TUI specific settings
-   */
-  tui?: {
-    /**
-     * TUI scroll speed
-     */
-    scroll_speed?: number
-    /**
-     * Scroll acceleration settings
-     */
-    scroll_acceleration?: {
-      /**
-       * Enable scroll acceleration
-       */
-      enabled: boolean
-    }
-    /**
-     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
-     */
-    diff_style?: "auto" | "stacked"
-  }
   server?: ServerConfig
   /**
    * Command configuration, see https://opencode.ai/docs/commands
@@ -1487,6 +1120,19 @@ export type Config = {
   }
   plugin?: Array<string>
   snapshot?: boolean
+  /**
+   * Git worktree configuration for session isolation
+   */
+  worktree?: {
+    /**
+     * Enable git worktree isolation for sessions
+     */
+    enabled?: boolean
+    /**
+     * How to handle worktree cleanup when session is deleted
+     */
+    cleanup?: "ask" | "always" | "never"
+  }
   /**
    * Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing
    */
@@ -2305,6 +1951,28 @@ export type ConfigUpdateResponses = {
 
 export type ConfigUpdateResponse = ConfigUpdateResponses[keyof ConfigUpdateResponses]
 
+export type SkillListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/skill"
+}
+
+export type SkillListResponses = {
+  /**
+   * List of skills
+   */
+  200: Array<{
+    name: string
+    description: string
+    location: string
+  }>
+}
+
+export type SkillListResponse = SkillListResponses[keyof SkillListResponses]
+
 export type ToolIdsData = {
   body?: never
   path?: never
@@ -2438,6 +2106,8 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     permission?: PermissionRuleset
+    useWorktree?: boolean
+    worktreeCleanup?: "ask" | "always" | "never"
   }
   path?: never
   query?: {
@@ -2500,6 +2170,7 @@ export type SessionDeleteData = {
   }
   query?: {
     directory?: string
+    removeWorktree?: boolean
   }
   url: "/session/{sessionID}"
 }
@@ -2709,6 +2380,8 @@ export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponse
 export type SessionForkData = {
   body?: {
     messageID?: string
+    useWorktree?: boolean
+    worktreeCleanup?: "ask" | "always" | "never"
   }
   path: {
     sessionID: string
@@ -3342,6 +3015,76 @@ export type SessionUnrevertResponses = {
 
 export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
 
+export type SessionWorktreeDeleteData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/worktree"
+}
+
+export type SessionWorktreeDeleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionWorktreeDeleteError = SessionWorktreeDeleteErrors[keyof SessionWorktreeDeleteErrors]
+
+export type SessionWorktreeDeleteResponses = {
+  /**
+   * Worktree removed
+   */
+  200: boolean
+}
+
+export type SessionWorktreeDeleteResponse = SessionWorktreeDeleteResponses[keyof SessionWorktreeDeleteResponses]
+
+export type SessionWorktreeGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/worktree"
+}
+
+export type SessionWorktreeGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionWorktreeGetError = SessionWorktreeGetErrors[keyof SessionWorktreeGetErrors]
+
+export type SessionWorktreeGetResponses = {
+  /**
+   * Worktree status
+   */
+  200: {
+    exists: boolean
+    path?: string
+    cleanup?: "ask" | "always" | "never"
+  }
+}
+
+export type SessionWorktreeGetResponse = SessionWorktreeGetResponses[keyof SessionWorktreeGetResponses]
+
 export type PermissionRespondData = {
   body?: {
     response: "once" | "always" | "reject"
@@ -3430,6 +3173,194 @@ export type PermissionListResponses = {
 }
 
 export type PermissionListResponse = PermissionListResponses[keyof PermissionListResponses]
+
+export type AskuserReplyData = {
+  body?: {
+    answers: {
+      [key: string]: string
+    }
+  }
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/askuser/{requestID}/reply"
+}
+
+export type AskuserReplyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AskuserReplyError = AskuserReplyErrors[keyof AskuserReplyErrors]
+
+export type AskuserReplyResponses = {
+  /**
+   * Answers submitted successfully
+   */
+  200: boolean
+}
+
+export type AskuserReplyResponse = AskuserReplyResponses[keyof AskuserReplyResponses]
+
+export type AskuserListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/askuser"
+}
+
+export type AskuserListResponses = {
+  /**
+   * List of pending questions
+   */
+  200: Array<{
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{
+        label: string
+        description: string
+      }>
+      multiSelect: boolean
+    }>
+  }>
+}
+
+export type AskuserListResponse = AskuserListResponses[keyof AskuserListResponses]
+
+export type AskuserListForSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/askuser"
+}
+
+export type AskuserListForSessionResponses = {
+  /**
+   * List of pending questions for session
+   */
+  200: Array<{
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{
+        label: string
+        description: string
+      }>
+      multiSelect: boolean
+    }>
+  }>
+}
+
+export type AskuserListForSessionResponse = AskuserListForSessionResponses[keyof AskuserListForSessionResponses]
+
+export type PlanmodeReplyData = {
+  body?: {
+    approved: boolean
+  }
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/planmode/{requestID}/reply"
+}
+
+export type PlanmodeReplyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PlanmodeReplyError = PlanmodeReplyErrors[keyof PlanmodeReplyErrors]
+
+export type PlanmodeReplyResponses = {
+  /**
+   * Response submitted successfully
+   */
+  200: boolean
+}
+
+export type PlanmodeReplyResponse = PlanmodeReplyResponses[keyof PlanmodeReplyResponses]
+
+export type PlanmodeListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/planmode"
+}
+
+export type PlanmodeListResponses = {
+  /**
+   * List of pending plan reviews
+   */
+  200: Array<{
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    plan: string
+  }>
+}
+
+export type PlanmodeListResponse = PlanmodeListResponses[keyof PlanmodeListResponses]
+
+export type PlanmodeListForSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/planmode"
+}
+
+export type PlanmodeListForSessionResponses = {
+  /**
+   * List of pending plan reviews for session
+   */
+  200: Array<{
+    id: string
+    sessionID: string
+    messageID: string
+    callID: string
+    plan: string
+  }>
+}
+
+export type PlanmodeListForSessionResponse = PlanmodeListForSessionResponses[keyof PlanmodeListForSessionResponses]
 
 export type CommandListData = {
   body?: never
@@ -4116,264 +4047,6 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
-
-export type TuiAppendPromptData = {
-  body?: {
-    text: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/append-prompt"
-}
-
-export type TuiAppendPromptErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type TuiAppendPromptError = TuiAppendPromptErrors[keyof TuiAppendPromptErrors]
-
-export type TuiAppendPromptResponses = {
-  /**
-   * Prompt processed successfully
-   */
-  200: boolean
-}
-
-export type TuiAppendPromptResponse = TuiAppendPromptResponses[keyof TuiAppendPromptResponses]
-
-export type TuiOpenHelpData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/open-help"
-}
-
-export type TuiOpenHelpResponses = {
-  /**
-   * Help dialog opened successfully
-   */
-  200: boolean
-}
-
-export type TuiOpenHelpResponse = TuiOpenHelpResponses[keyof TuiOpenHelpResponses]
-
-export type TuiOpenSessionsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/open-sessions"
-}
-
-export type TuiOpenSessionsResponses = {
-  /**
-   * Session dialog opened successfully
-   */
-  200: boolean
-}
-
-export type TuiOpenSessionsResponse = TuiOpenSessionsResponses[keyof TuiOpenSessionsResponses]
-
-export type TuiOpenThemesData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/open-themes"
-}
-
-export type TuiOpenThemesResponses = {
-  /**
-   * Theme dialog opened successfully
-   */
-  200: boolean
-}
-
-export type TuiOpenThemesResponse = TuiOpenThemesResponses[keyof TuiOpenThemesResponses]
-
-export type TuiOpenModelsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/open-models"
-}
-
-export type TuiOpenModelsResponses = {
-  /**
-   * Model dialog opened successfully
-   */
-  200: boolean
-}
-
-export type TuiOpenModelsResponse = TuiOpenModelsResponses[keyof TuiOpenModelsResponses]
-
-export type TuiSubmitPromptData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/submit-prompt"
-}
-
-export type TuiSubmitPromptResponses = {
-  /**
-   * Prompt submitted successfully
-   */
-  200: boolean
-}
-
-export type TuiSubmitPromptResponse = TuiSubmitPromptResponses[keyof TuiSubmitPromptResponses]
-
-export type TuiClearPromptData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/clear-prompt"
-}
-
-export type TuiClearPromptResponses = {
-  /**
-   * Prompt cleared successfully
-   */
-  200: boolean
-}
-
-export type TuiClearPromptResponse = TuiClearPromptResponses[keyof TuiClearPromptResponses]
-
-export type TuiExecuteCommandData = {
-  body?: {
-    command: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/execute-command"
-}
-
-export type TuiExecuteCommandErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type TuiExecuteCommandError = TuiExecuteCommandErrors[keyof TuiExecuteCommandErrors]
-
-export type TuiExecuteCommandResponses = {
-  /**
-   * Command executed successfully
-   */
-  200: boolean
-}
-
-export type TuiExecuteCommandResponse = TuiExecuteCommandResponses[keyof TuiExecuteCommandResponses]
-
-export type TuiShowToastData = {
-  body?: {
-    title?: string
-    message: string
-    variant: "info" | "success" | "warning" | "error"
-    /**
-     * Duration in milliseconds
-     */
-    duration?: number
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/show-toast"
-}
-
-export type TuiShowToastResponses = {
-  /**
-   * Toast notification shown successfully
-   */
-  200: boolean
-}
-
-export type TuiShowToastResponse = TuiShowToastResponses[keyof TuiShowToastResponses]
-
-export type TuiPublishData = {
-  body?: EventTuiPromptAppend | EventTuiCommandExecute | EventTuiToastShow
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/publish"
-}
-
-export type TuiPublishErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type TuiPublishError = TuiPublishErrors[keyof TuiPublishErrors]
-
-export type TuiPublishResponses = {
-  /**
-   * Event published successfully
-   */
-  200: boolean
-}
-
-export type TuiPublishResponse = TuiPublishResponses[keyof TuiPublishResponses]
-
-export type TuiControlNextData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/control/next"
-}
-
-export type TuiControlNextResponses = {
-  /**
-   * Next TUI request
-   */
-  200: {
-    path: string
-    body: unknown
-  }
-}
-
-export type TuiControlNextResponse = TuiControlNextResponses[keyof TuiControlNextResponses]
-
-export type TuiControlResponseData = {
-  body?: unknown
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/tui/control/response"
-}
-
-export type TuiControlResponseResponses = {
-  /**
-   * Response submitted successfully
-   */
-  200: boolean
-}
-
-export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
 
 export type AuthSetData = {
   body?: Auth
