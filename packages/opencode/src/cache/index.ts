@@ -214,9 +214,11 @@ export namespace Cache {
      */
     export function remove(id: string) {
       const db = get()
-      db.run(`DELETE FROM sessions WHERE id = ?`, [id])
-      // Also remove associated messages
-      db.run(`DELETE FROM messages WHERE sessionID = ?`, [id])
+      const deleteSession = db.transaction(() => {
+        db.run(`DELETE FROM sessions WHERE id = ?`, [id])
+        db.run(`DELETE FROM messages WHERE sessionID = ?`, [id])
+      })
+      deleteSession()
     }
 
     /**
@@ -446,10 +448,13 @@ export namespace Cache {
    */
   export function clear() {
     const db = get()
-    db.run(`DELETE FROM sessions`)
-    db.run(`DELETE FROM messages`)
-    db.run(`DELETE FROM config`)
-    db.run(`DELETE FROM sync_meta`)
+    const clearAll = db.transaction(() => {
+      db.run(`DELETE FROM sessions`)
+      db.run(`DELETE FROM messages`)
+      db.run(`DELETE FROM config`)
+      db.run(`DELETE FROM sync_meta`)
+    })
+    clearAll()
   }
 
   /**

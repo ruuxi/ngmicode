@@ -116,6 +116,7 @@ for (const item of targets) {
     conditions: ["browser"],
     tsconfig: "./tsconfig.json",
     sourcemap: "external",
+    bytecode: true,
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
