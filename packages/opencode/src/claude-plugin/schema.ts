@@ -122,6 +122,16 @@ export namespace ClaudePluginSchema {
 
   export type AgentFrontmatter = z.infer<typeof AgentFrontmatter>
 
+  // Skill frontmatter (skills/*/SKILL.md)
+  export const SkillFrontmatter = z.object({
+    name: z.string(),
+    description: z.string(),
+    "allowed-tools": z.string().optional(),
+    model: z.string().optional(),
+  })
+
+  export type SkillFrontmatter = z.infer<typeof SkillFrontmatter>
+
   // Plugin source
   export const PluginSource = z.enum(["local", "marketplace"])
 

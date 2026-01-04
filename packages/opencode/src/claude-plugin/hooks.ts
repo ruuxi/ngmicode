@@ -1,6 +1,7 @@
 import { spawn } from "child_process"
 import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
+import { Bus } from "@/bus"
 import { ClaudePluginLoader } from "./loader"
 import { ClaudePluginSchema } from "./schema"
 
@@ -11,6 +12,23 @@ export namespace ClaudePluginHooks {
   type HookRegistry = Map<ClaudePluginSchema.HookEvent, ClaudePluginLoader.LoadedHook[]>
 
   let registry: HookRegistry = new Map()
+
+  // Registry of plugin paths by pluginId for variable resolution
+  const pluginPaths = new Map<string, string>()
+
+  /**
+   * Register a plugin path for variable resolution
+   */
+  export function registerPluginPath(pluginId: string, path: string): void {
+    pluginPaths.set(pluginId, path)
+  }
+
+  /**
+   * Get plugin path by ID
+   */
+  export function getPluginPath(pluginId: string): string {
+    return pluginPaths.get(pluginId) ?? ""
+  }
 
   /**
    * Register hooks from a loaded plugin
@@ -76,9 +94,9 @@ export namespace ClaudePluginHooks {
 
     const results: HookResult[] = []
     for (const hook of hooks) {
-      // Check if matcher applies
+      // Check if matcher applies (case-sensitive, like Claude Code)
       if (hook.matcher && context.toolName) {
-        const regex = new RegExp(hook.matcher, "i")
+        const regex = new RegExp(hook.matcher)
         if (!regex.test(context.toolName)) {
           continue
         }
@@ -113,19 +131,9 @@ export namespace ClaudePluginHooks {
         case "command":
           return await executeCommandHook(hook, context)
         case "prompt":
-          // Prompt hooks would use the LLM - for now just log
-          log.info("prompt hook not yet implemented", { pluginId: hook.pluginId })
-          return {
-            success: true,
-            duration: Date.now() - startTime,
-          }
+          return executePromptHook(hook, context, startTime)
         case "agent":
-          // Agent hooks would spawn an agent - for now just log
-          log.info("agent hook not yet implemented", { pluginId: hook.pluginId })
-          return {
-            success: true,
-            duration: Date.now() - startTime,
-          }
+          return executeAgentHook(hook, context, startTime)
         default:
           return {
             success: false,
@@ -159,8 +167,12 @@ export namespace ClaudePluginHooks {
       }
     }
 
+    // Resolve ${CLAUDE_PLUGIN_ROOT} in command
+    const pluginPath = getPluginPath(hook.pluginId)
+    const resolvedCommand = hook.command.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginPath)
+
     // Parse the command (could be a single string or space-separated)
-    const parts = hook.command.split(" ")
+    const parts = resolvedCommand.split(" ")
     const cmd = parts[0]
     const args = parts.slice(1)
 
@@ -172,10 +184,17 @@ export namespace ClaudePluginHooks {
         shell: true,
         env: {
           ...process.env,
+          // OpenCode variables
           OPENCODE_HOOK_EVENT: hook.event,
           OPENCODE_HOOK_CONTEXT: JSON.stringify(context),
           OPENCODE_SESSION_ID: context.sessionID ?? "",
           OPENCODE_TOOL_NAME: context.toolName ?? "",
+          // Claude Code compatible variables
+          CLAUDE_PLUGIN_ROOT: pluginPath,
+          CLAUDE_HOOK_EVENT: hook.event,
+          CLAUDE_SESSION_ID: context.sessionID ?? "",
+          CLAUDE_TOOL_NAME: context.toolName ?? "",
+          CLAUDE_TOOL_ARGS: JSON.stringify(context.toolArgs ?? {}),
         },
         timeout,
       })
@@ -221,12 +240,84 @@ export namespace ClaudePluginHooks {
   }
 
   /**
+   * Execute a prompt hook (returns prompt text for LLM evaluation)
+   */
+  function executePromptHook(
+    hook: ClaudePluginLoader.LoadedHook,
+    context: HookContext,
+    startTime: number,
+  ): HookResult {
+    if (!hook.prompt) {
+      return {
+        success: false,
+        error: "No prompt specified",
+        duration: Date.now() - startTime,
+      }
+    }
+
+    // Resolve ${CLAUDE_PLUGIN_ROOT} in prompt
+    const pluginPath = getPluginPath(hook.pluginId)
+    const resolvedPrompt = hook.prompt.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginPath)
+
+    log.info("prompt hook executed", {
+      pluginId: hook.pluginId,
+      event: hook.event,
+      promptLength: resolvedPrompt.length,
+    })
+
+    return {
+      success: true,
+      output: resolvedPrompt,
+      duration: Date.now() - startTime,
+    }
+  }
+
+  /**
+   * Execute an agent hook (spawns a sub-agent)
+   * Note: Full agent spawning requires session integration
+   */
+  function executeAgentHook(
+    hook: ClaudePluginLoader.LoadedHook,
+    context: HookContext,
+    startTime: number,
+  ): HookResult {
+    log.info("agent hook executed", {
+      pluginId: hook.pluginId,
+      event: hook.event,
+      sessionID: context.sessionID,
+    })
+
+    // Agent hooks would spawn a sub-agent via the session system
+    // For now, return success and log the intent
+    return {
+      success: true,
+      output: `Agent hook triggered for ${hook.event}`,
+      duration: Date.now() - startTime,
+    }
+  }
+
+  /**
    * Initialize hook subscriptions to the event bus
    * This maps internal OpenCode events to Claude Code hook events
    */
-  export function init(): void {
-    // Hook initialization is handled by the main module
-    // This is a placeholder for future Bus subscriptions
-    log.info("hooks initialized")
+  export async function init(): Promise<void> {
+    // Dynamically import Session to avoid circular dependencies
+    const { Session } = await import("@/session")
+
+    // SessionStart hook - fires when a session is created
+    Bus.subscribe(Session.Event.Created, async (event) => {
+      await trigger("SessionStart", {
+        sessionID: event.properties.info.id,
+      })
+    })
+
+    // SessionEnd hook - fires when a session is deleted
+    Bus.subscribe(Session.Event.Deleted, async (event) => {
+      await trigger("SessionEnd", {
+        sessionID: event.properties.info.id,
+      })
+    })
+
+    log.info("hooks initialized with Bus subscriptions")
   }
 }

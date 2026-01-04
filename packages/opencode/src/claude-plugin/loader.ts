@@ -66,6 +66,18 @@ export namespace ClaudePluginLoader {
     }
   }
 
+  export interface LoadedSkill {
+    pluginId: string
+    pluginName: string
+    name: string
+    fullName: string
+    description: string
+    prompt: string
+    model?: string
+    allowedTools?: string[]
+    location: string
+  }
+
   export interface LoadedPlugin {
     id: string
     name: string
@@ -73,6 +85,7 @@ export namespace ClaudePluginLoader {
     manifest: ClaudePluginSchema.Manifest
     commands: LoadedCommand[]
     agents: LoadedAgent[]
+    skills: LoadedSkill[]
     hooks: LoadedHook[]
     mcp: LoadedMcp[]
     lsp: LoadedLsp[]
@@ -80,6 +93,7 @@ export namespace ClaudePluginLoader {
 
   const COMMAND_GLOB = new Bun.Glob("commands/**/*.md")
   const AGENT_GLOB = new Bun.Glob("agents/**/*.md")
+  const SKILL_GLOB = new Bun.Glob("skills/**/SKILL.md")
 
   /**
    * Load a plugin from a directory, parsing all its components
@@ -96,6 +110,7 @@ export namespace ClaudePluginLoader {
       manifest: discovered.manifest,
       commands: [],
       agents: [],
+      skills: [],
       hooks: [],
       mcp: [],
       lsp: [],
@@ -127,6 +142,19 @@ export namespace ClaudePluginLoader {
       }
     }
 
+    // Load skills
+    if (discovered.hasSkills) {
+      for await (const match of SKILL_GLOB.scan({
+        cwd: pluginPath,
+        absolute: true,
+        onlyFiles: true,
+        followSymlinks: true,
+      })) {
+        const skill = await loadSkill(match, discovered.id, pluginName)
+        if (skill) loaded.skills.push(skill)
+      }
+    }
+
     // Load hooks
     if (discovered.hasHooks) {
       const hooks = await loadHooks(pluginPath, discovered.id)
@@ -149,6 +177,7 @@ export namespace ClaudePluginLoader {
       id: loaded.id,
       commands: loaded.commands.length,
       agents: loaded.agents.length,
+      skills: loaded.skills.length,
       hooks: loaded.hooks.length,
       mcp: loaded.mcp.length,
       lsp: loaded.lsp.length,
@@ -218,6 +247,45 @@ export namespace ClaudePluginLoader {
       prompt: md.content.trim(),
       model: frontmatter.model,
       allowedTools,
+    }
+  }
+
+  async function loadSkill(
+    filePath: string,
+    pluginId: string,
+    pluginName: string,
+  ): Promise<LoadedSkill | undefined> {
+    const md = await ConfigMarkdown.parse(filePath).catch((e) => {
+      log.warn("failed to parse skill", { path: filePath, error: e.message })
+      return undefined
+    })
+    if (!md) return undefined
+
+    const parsed = ClaudePluginSchema.SkillFrontmatter.safeParse(md.data)
+    if (!parsed.success) {
+      log.warn("invalid skill frontmatter", { path: filePath, issues: parsed.error.issues })
+      return undefined
+    }
+
+    const frontmatter = parsed.data
+    const fullName = `${pluginName}:${frontmatter.name}`
+
+    // Parse allowed-tools as comma-separated list
+    const allowedTools = frontmatter["allowed-tools"]
+      ?.split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+
+    return {
+      pluginId,
+      pluginName,
+      name: frontmatter.name,
+      fullName,
+      description: frontmatter.description,
+      prompt: md.content.trim(),
+      model: frontmatter.model,
+      allowedTools,
+      location: filePath,
     }
   }
 

@@ -68,6 +68,8 @@ export namespace ClaudePlugin {
           if (loaded) {
             plugins.set(loaded.id, loaded)
             ClaudePluginHooks.register(loaded.hooks)
+            // Register plugin path for variable resolution in hooks
+            ClaudePluginHooks.registerPluginPath(loaded.id, loaded.path)
           }
         }
 
@@ -85,7 +87,7 @@ export namespace ClaudePlugin {
       }
 
       // Initialize hook subscriptions
-      ClaudePluginHooks.init()
+      await ClaudePluginHooks.init()
 
       log.info("loaded plugins", { count: plugins.size })
       return { plugins }
@@ -143,6 +145,7 @@ export namespace ClaudePlugin {
     const s = await state()
     s.plugins.set(loaded.id, loaded)
     ClaudePluginHooks.register(loaded.hooks)
+    ClaudePluginHooks.registerPluginPath(loaded.id, loaded.path)
 
     Bus.publish(Event.Loaded, { pluginId: loaded.id, pluginName: loaded.name })
     log.info("installed plugin", { id: loaded.id })
@@ -191,6 +194,7 @@ export namespace ClaudePlugin {
       if (loaded) {
         s.plugins.set(loaded.id, loaded)
         ClaudePluginHooks.register(loaded.hooks)
+        ClaudePluginHooks.registerPluginPath(loaded.id, loaded.path)
       }
     }
 
@@ -232,6 +236,14 @@ export namespace ClaudePlugin {
   export async function agents(): Promise<ClaudePluginLoader.LoadedAgent[]> {
     const plugins = await list()
     return plugins.flatMap((p) => p.agents)
+  }
+
+  /**
+   * Get all skills from loaded plugins
+   */
+  export async function skills(): Promise<ClaudePluginLoader.LoadedSkill[]> {
+    const plugins = await list()
+    return plugins.flatMap((p) => p.skills)
   }
 
   /**

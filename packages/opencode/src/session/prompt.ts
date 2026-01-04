@@ -46,6 +46,7 @@ import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { ClaudeAgentProcessor } from "./claude-agent-processor"
 import { ClaudeAgent } from "@/provider/claude-agent"
+import { ClaudePlugin } from "@/claude-plugin"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -151,6 +152,13 @@ export namespace SessionPrompt {
     await SessionRevert.cleanup(session)
 
     const message = await createUserMessage(input)
+
+    // Trigger UserPromptSubmit hook
+    await ClaudePlugin.Hooks.trigger("UserPromptSubmit", {
+      sessionID: input.sessionID,
+      messageID: message.info.id,
+    })
+
     await Session.touch(input.sessionID)
 
     // this is backwards compatibility for allowing `tools` to be specified when
@@ -809,17 +817,47 @@ export namespace SessionPrompt {
               args,
             },
           )
-          const result = await item.execute(args, ctx)
-          await Plugin.trigger(
-            "tool.execute.after",
-            {
-              tool: item.id,
+          // Trigger Claude plugin PreToolUse hook
+          await ClaudePlugin.Hooks.trigger("PreToolUse", {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            toolName: item.id,
+            toolArgs: args,
+          })
+
+          try {
+            const result = await item.execute(args, ctx)
+
+            await Plugin.trigger(
+              "tool.execute.after",
+              {
+                tool: item.id,
+                sessionID: ctx.sessionID,
+                callID: ctx.callID,
+              },
+              result,
+            )
+            // Trigger Claude plugin PostToolUse hook
+            await ClaudePlugin.Hooks.trigger("PostToolUse", {
               sessionID: ctx.sessionID,
-              callID: ctx.callID,
-            },
-            result,
-          )
-          return result
+              messageID: ctx.messageID,
+              toolName: item.id,
+              toolArgs: args,
+              toolResult: result,
+            })
+
+            return result
+          } catch (error) {
+            // Trigger Claude plugin PostToolUseFailure hook
+            await ClaudePlugin.Hooks.trigger("PostToolUseFailure", {
+              sessionID: ctx.sessionID,
+              messageID: ctx.messageID,
+              toolName: item.id,
+              toolArgs: args,
+              error: error instanceof Error ? error : new Error(String(error)),
+            })
+            throw error
+          }
         },
         toModelOutput(result) {
           return {
@@ -849,6 +887,13 @@ export namespace SessionPrompt {
             args,
           },
         )
+        // Trigger Claude plugin PreToolUse hook
+        await ClaudePlugin.Hooks.trigger("PreToolUse", {
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          toolName: key,
+          toolArgs: args,
+        })
 
         await ctx.ask({
           permission: key,
@@ -857,43 +902,63 @@ export namespace SessionPrompt {
           always: ["*"],
         })
 
-        const result = await execute(args, opts)
+        try {
+          const result = await execute(args, opts)
 
-        await Plugin.trigger(
-          "tool.execute.after",
-          {
-            tool: key,
+          await Plugin.trigger(
+            "tool.execute.after",
+            {
+              tool: key,
+              sessionID: ctx.sessionID,
+              callID: opts.toolCallId,
+            },
+            result,
+          )
+          // Trigger Claude plugin PostToolUse hook
+          await ClaudePlugin.Hooks.trigger("PostToolUse", {
             sessionID: ctx.sessionID,
-            callID: opts.toolCallId,
-          },
-          result,
-        )
+            messageID: ctx.messageID,
+            toolName: key,
+            toolArgs: args,
+            toolResult: result,
+          })
 
-        const textParts: string[] = []
-        const attachments: MessageV2.FilePart[] = []
+          const textParts: string[] = []
+          const attachments: MessageV2.FilePart[] = []
 
-        for (const contentItem of result.content) {
-          if (contentItem.type === "text") {
-            textParts.push(contentItem.text)
-          } else if (contentItem.type === "image") {
-            attachments.push({
-              id: Identifier.ascending("part"),
-              sessionID: input.session.id,
-              messageID: input.processor.message.id,
-              type: "file",
-              mime: contentItem.mimeType,
-              url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
-            })
+          for (const contentItem of result.content) {
+            if (contentItem.type === "text") {
+              textParts.push(contentItem.text)
+            } else if (contentItem.type === "image") {
+              attachments.push({
+                id: Identifier.ascending("part"),
+                sessionID: input.session.id,
+                messageID: input.processor.message.id,
+                type: "file",
+                mime: contentItem.mimeType,
+                url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
+              })
+            }
+            // Add support for other types if needed
           }
-          // Add support for other types if needed
-        }
 
-        return {
-          title: "",
-          metadata: result.metadata ?? {},
-          output: textParts.join("\n\n"),
-          attachments,
-          content: result.content, // directly return content to preserve ordering when outputting to model
+          return {
+            title: "",
+            metadata: result.metadata ?? {},
+            output: textParts.join("\n\n"),
+            attachments,
+            content: result.content, // directly return content to preserve ordering when outputting to model
+          }
+        } catch (error) {
+          // Trigger Claude plugin PostToolUseFailure hook
+          await ClaudePlugin.Hooks.trigger("PostToolUseFailure", {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            toolName: key,
+            toolArgs: args,
+            error: error instanceof Error ? error : new Error(String(error)),
+          })
+          throw error
         }
       }
       item.toModelOutput = (result) => {
