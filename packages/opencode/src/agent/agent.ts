@@ -12,6 +12,7 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
+import { ClaudePlugin } from "@/claude-plugin"
 
 export namespace Agent {
   export const Info = z
@@ -186,6 +187,26 @@ export namespace Agent {
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
     }
+
+    // Load agents from Claude Code plugins
+    for (const agent of await ClaudePlugin.agents()) {
+      const name = agent.fullName
+      if (result[name]) continue // Don't override existing agents
+
+      result[name] = {
+        name,
+        description: agent.description,
+        prompt: agent.prompt,
+        mode: "all",
+        native: false,
+        options: {},
+        permission: PermissionNext.merge(defaults, user),
+      }
+      if (agent.model) {
+        result[name].model = Provider.parseModel(agent.model)
+      }
+    }
+
     return result
   })
 

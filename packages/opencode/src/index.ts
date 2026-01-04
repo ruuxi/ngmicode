@@ -4,6 +4,7 @@ import { Log } from "./util/log"
 import { Installation } from "./installation"
 import { NamedError } from "@opencode-ai/util/error"
 import { ServeCommand } from "./cli/cmd/serve"
+import { GenerateCommand } from "./cli/cmd/generate"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -54,6 +55,7 @@ const cli = yargs(hideBin(process.argv))
     })
   })
   .command(ServeCommand)
+  .command(GenerateCommand)
   .demandCommand(1, "You must specify a command")
   .fail((msg) => {
     if (

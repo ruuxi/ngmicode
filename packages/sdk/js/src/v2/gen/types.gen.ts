@@ -4,6 +4,20 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type Project = {
   id: string
   worktree: string
@@ -29,20 +43,6 @@ export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
     directory: string
-  }
-}
-
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
   }
 }
 
@@ -480,6 +480,35 @@ export type EventPermissionReplied = {
   }
 }
 
+export type EventClaudePluginLoaded = {
+  type: "claude-plugin.loaded"
+  properties: {
+    pluginId: string
+    pluginName: string
+  }
+}
+
+export type EventClaudePluginUnloaded = {
+  type: "claude-plugin.unloaded"
+  properties: {
+    pluginId: string
+  }
+}
+
+export type EventClaudePluginEnabled = {
+  type: "claude-plugin.enabled"
+  properties: {
+    pluginId: string
+  }
+}
+
+export type EventClaudePluginDisabled = {
+  type: "claude-plugin.disabled"
+  properties: {
+    pluginId: string
+  }
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -769,10 +798,10 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventProjectUpdated
-  | EventServerInstanceDisposed
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventProjectUpdated
+  | EventServerInstanceDisposed
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMessageUpdated
@@ -781,6 +810,10 @@ export type Event =
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventClaudePluginLoaded
+  | EventClaudePluginUnloaded
+  | EventClaudePluginEnabled
+  | EventClaudePluginDisabled
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionCompacted
@@ -824,6 +857,66 @@ export type NotFoundError = {
   data: {
     message: string
   }
+}
+
+export type ClaudePluginManifest = {
+  name: string
+  version: string
+  description?: string
+  author?:
+    | {
+        name: string
+        email?: string
+        url?: string
+      }
+    | string
+  homepage?: string
+  repository?: string
+  license?: string
+  keywords?: Array<string>
+  commands?: Array<string>
+  agents?: string
+  skills?: string
+  hooks?: string
+  mcpServers?: {
+    [key: string]: unknown
+  }
+  lspServers?: string
+}
+
+export type ClaudePluginLoaded = {
+  id: string
+  name: string
+  path: string
+  manifest: ClaudePluginManifest
+  commandCount: number
+  agentCount: number
+  hookCount: number
+  mcpCount: number
+  lspCount: number
+}
+
+export type ClaudePluginInstalled = {
+  id: string
+  source: "local" | "marketplace"
+  path: string
+  enabled: boolean
+  manifest: ClaudePluginManifest
+  installedAt: number
+  updatedAt?: number
+}
+
+export type ClaudePluginMarketplaceEntry = {
+  id: string
+  name: string
+  version: string
+  description?: string
+  author?: string
+  source: string
+  homepage?: string
+  downloads?: number
+  rating?: number
+  tags?: Array<string>
 }
 
 /**
@@ -1730,6 +1823,289 @@ export type ProjectUpdateResponses = {
 }
 
 export type ProjectUpdateResponse = ProjectUpdateResponses[keyof ProjectUpdateResponses]
+
+export type ClaudePluginListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin"
+}
+
+export type ClaudePluginListResponses = {
+  /**
+   * List of loaded plugins
+   */
+  200: Array<ClaudePluginLoaded>
+}
+
+export type ClaudePluginListResponse = ClaudePluginListResponses[keyof ClaudePluginListResponses]
+
+export type ClaudePluginInstalledData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/installed"
+}
+
+export type ClaudePluginInstalledResponses = {
+  /**
+   * List of installed plugins
+   */
+  200: Array<ClaudePluginInstalled>
+}
+
+export type ClaudePluginInstalledResponse = ClaudePluginInstalledResponses[keyof ClaudePluginInstalledResponses]
+
+export type ClaudePluginMarketplaceData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/marketplace"
+}
+
+export type ClaudePluginMarketplaceResponses = {
+  /**
+   * List of marketplace plugins
+   */
+  200: Array<ClaudePluginMarketplaceEntry>
+}
+
+export type ClaudePluginMarketplaceResponse = ClaudePluginMarketplaceResponses[keyof ClaudePluginMarketplaceResponses]
+
+export type ClaudePluginMarketplaceSearchData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    q: string
+  }
+  url: "/claude-plugin/marketplace/search"
+}
+
+export type ClaudePluginMarketplaceSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ClaudePluginMarketplaceSearchError =
+  ClaudePluginMarketplaceSearchErrors[keyof ClaudePluginMarketplaceSearchErrors]
+
+export type ClaudePluginMarketplaceSearchResponses = {
+  /**
+   * Search results
+   */
+  200: Array<ClaudePluginMarketplaceEntry>
+}
+
+export type ClaudePluginMarketplaceSearchResponse =
+  ClaudePluginMarketplaceSearchResponses[keyof ClaudePluginMarketplaceSearchResponses]
+
+export type ClaudePluginInstallData = {
+  body?: {
+    id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/install"
+}
+
+export type ClaudePluginInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ClaudePluginInstallError = ClaudePluginInstallErrors[keyof ClaudePluginInstallErrors]
+
+export type ClaudePluginInstallResponses = {
+  /**
+   * Installed plugin
+   */
+  200: ClaudePluginLoaded
+}
+
+export type ClaudePluginInstallResponse = ClaudePluginInstallResponses[keyof ClaudePluginInstallResponses]
+
+export type ClaudePluginUninstallData = {
+  body?: {
+    id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/uninstall"
+}
+
+export type ClaudePluginUninstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ClaudePluginUninstallError = ClaudePluginUninstallErrors[keyof ClaudePluginUninstallErrors]
+
+export type ClaudePluginUninstallResponses = {
+  /**
+   * Plugin uninstalled
+   */
+  200: boolean
+}
+
+export type ClaudePluginUninstallResponse = ClaudePluginUninstallResponses[keyof ClaudePluginUninstallResponses]
+
+export type ClaudePluginEnableData = {
+  body?: {
+    id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/enable"
+}
+
+export type ClaudePluginEnableErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ClaudePluginEnableError = ClaudePluginEnableErrors[keyof ClaudePluginEnableErrors]
+
+export type ClaudePluginEnableResponses = {
+  /**
+   * Plugin enabled
+   */
+  200: boolean
+}
+
+export type ClaudePluginEnableResponse = ClaudePluginEnableResponses[keyof ClaudePluginEnableResponses]
+
+export type ClaudePluginDisableData = {
+  body?: {
+    id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/disable"
+}
+
+export type ClaudePluginDisableErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ClaudePluginDisableError = ClaudePluginDisableErrors[keyof ClaudePluginDisableErrors]
+
+export type ClaudePluginDisableResponses = {
+  /**
+   * Plugin disabled
+   */
+  200: boolean
+}
+
+export type ClaudePluginDisableResponse = ClaudePluginDisableResponses[keyof ClaudePluginDisableResponses]
+
+export type ClaudePluginCommandsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/commands"
+}
+
+export type ClaudePluginCommandsResponses = {
+  /**
+   * List of commands
+   */
+  200: Array<{
+    pluginId: string
+    pluginName: string
+    name: string
+    fullName: string
+    description?: string
+  }>
+}
+
+export type ClaudePluginCommandsResponse = ClaudePluginCommandsResponses[keyof ClaudePluginCommandsResponses]
+
+export type ClaudePluginAgentsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/agents"
+}
+
+export type ClaudePluginAgentsResponses = {
+  /**
+   * List of agents
+   */
+  200: Array<{
+    pluginId: string
+    pluginName: string
+    name: string
+    fullName: string
+    description?: string
+  }>
+}
+
+export type ClaudePluginAgentsResponse = ClaudePluginAgentsResponses[keyof ClaudePluginAgentsResponses]
+
+export type ClaudePluginMarketplaceRefreshData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/marketplace/refresh"
+}
+
+export type ClaudePluginMarketplaceRefreshResponses = {
+  /**
+   * Marketplace refreshed
+   */
+  200: Array<ClaudePluginMarketplaceEntry>
+}
+
+export type ClaudePluginMarketplaceRefreshResponse =
+  ClaudePluginMarketplaceRefreshResponses[keyof ClaudePluginMarketplaceRefreshResponses]
 
 export type PtyListData = {
   body?: never

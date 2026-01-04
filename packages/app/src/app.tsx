@@ -25,6 +25,7 @@ import Home from "@/pages/home"
 import DirectoryLayout from "@/pages/directory-layout"
 import Session from "@/pages/session"
 import MultiPanePage from "@/pages/multi-pane"
+import Marketplace from "@/pages/marketplace"
 import { ErrorPage } from "./pages/error"
 import { iife } from "@opencode-ai/util/iife"
 
@@ -85,6 +86,7 @@ export function App() {
                             )}
                           >
                             <Route path="/" component={Home} />
+                            <Route path="/marketplace" component={Marketplace} />
                             <Route path="/multi" component={MultiPanePage} />
                             <Route path="/:dir" component={DirectoryLayout}>
                               <Route path="/" component={() => <Navigate href="session" />} />
