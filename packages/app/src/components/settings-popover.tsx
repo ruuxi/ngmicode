@@ -1,4 +1,4 @@
-import { Component, Show, Match, Switch as SolidSwitch, createMemo, createSignal } from "solid-js"
+import { Component, Show, Match, Switch as SolidSwitch, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { Popover } from "@opencode-ai/ui/popover"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -13,6 +13,7 @@ import { useLayout } from "@/context/layout"
 import { useVoice } from "@/context/voice"
 import { usePlatform } from "@/context/platform"
 import { formatKeybind } from "@/context/command"
+import { useKeybindCapture } from "@/hooks/use-keybind-capture"
 
 export const SettingsPopover: Component = () => {
   const permission = usePermission()
@@ -22,34 +23,16 @@ export const SettingsPopover: Component = () => {
   const layout = useLayout()
   const voice = useVoice()
   const platform = usePlatform()
-  const [isCapturingKeybind, setIsCapturingKeybind] = createSignal(false)
-  const [capturedKeybind, setCapturedKeybind] = createSignal("")
+
+  const { isCapturing: isCapturingKeybind, setIsCapturing: setIsCapturingKeybind, setCapturedKeybind, handleKeyDown: handleKeybindKeyDown } =
+    useKeybindCapture(voice.settings.keybind(), {
+      onCapture: (keybind) => voice.settings.setKeybind(keybind),
+    })
 
   const sessionID = () => params.id
   const isGitProject = createMemo(() => sync.data.vcs !== undefined)
   const hasPermissions = createMemo(() => permission.permissionsEnabled() && sessionID())
   const isTauri = () => platform.platform === "tauri"
-
-  const handleKeybindKeyDown = (e: KeyboardEvent) => {
-    if (!isCapturingKeybind()) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    const parts: string[] = []
-    if (e.ctrlKey || e.metaKey) parts.push("mod")
-    if (e.altKey) parts.push("alt")
-    if (e.shiftKey) parts.push("shift")
-
-    const key = e.key.toLowerCase()
-    if (!["control", "meta", "alt", "shift"].includes(key)) {
-      parts.push(key)
-      const newKeybind = parts.join("+")
-      setCapturedKeybind(newKeybind)
-      voice.settings.setKeybind(newKeybind)
-      setIsCapturingKeybind(false)
-    }
-  }
 
   return (
     <Popover
@@ -193,7 +176,7 @@ export const SettingsPopover: Component = () => {
               </SolidSwitch>
             </div>
 
-            {/* Hotkey */}
+            {/* Hotkey and Mode */}
             <Show when={voice.state.modelStatus() === "ready"}>
               <div class="flex items-center gap-2">
                 <span class="text-12-regular text-text-subtle">Hotkey:</span>
@@ -218,17 +201,35 @@ export const SettingsPopover: Component = () => {
                   </Show>
                 </button>
               </div>
-              <Show when={!voice.settings.hasConfigured()}>
-                <Button
-                  variant="ghost"
-                  size="small"
-                  class="justify-start"
-                  onClick={() => voice.settings.markConfigured()}
-                >
-                  <Icon name="check" size="small" />
-                  <span>Enable voice input</span>
-                </Button>
-              </Show>
+
+              {/* Recording Mode */}
+              <div class="flex items-center gap-2">
+                <span class="text-12-regular text-text-subtle">Mode:</span>
+                <div class="flex gap-1">
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded text-12-regular"
+                    classList={{
+                      "bg-surface-info-base/20 text-text-info-base": voice.settings.mode() === "toggle",
+                      "bg-surface-raised-base text-text-subtle hover:text-text-base": voice.settings.mode() !== "toggle",
+                    }}
+                    onClick={() => voice.settings.setMode("toggle")}
+                  >
+                    Toggle
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded text-12-regular"
+                    classList={{
+                      "bg-surface-info-base/20 text-text-info-base": voice.settings.mode() === "push-to-talk",
+                      "bg-surface-raised-base text-text-subtle hover:text-text-base": voice.settings.mode() !== "push-to-talk",
+                    }}
+                    onClick={() => voice.settings.setMode("push-to-talk")}
+                  >
+                    Push to Talk
+                  </button>
+                </div>
+              </div>
             </Show>
           </div>
         </Show>

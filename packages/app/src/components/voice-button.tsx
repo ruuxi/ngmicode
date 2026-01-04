@@ -25,8 +25,8 @@ export function VoiceButton(props: VoiceButtonProps) {
   })
 
   const handleClick = () => {
-    // If not configured, show settings dialog
-    if (!voice.settings.hasConfigured()) {
+    // If model not ready, show settings dialog to download
+    if (voice.state.modelStatus() !== "ready") {
       dialog.show(() => <DialogVoiceSettings />)
       return
     }
@@ -36,8 +36,14 @@ export function VoiceButton(props: VoiceButtonProps) {
   }
 
   const getTooltipText = () => {
-    if (!voice.settings.hasConfigured()) {
-      return "Configure voice input"
+    if (voice.state.modelStatus() === "not-downloaded") {
+      return "Download voice model"
+    }
+    if (voice.state.modelStatus() === "downloading") {
+      return "Downloading model..."
+    }
+    if (voice.state.modelStatus() === "error") {
+      return "Model error - click to retry"
     }
     if (voice.state.isTranscribing()) {
       return "Transcribing..."
@@ -65,7 +71,7 @@ export function VoiceButton(props: VoiceButtonProps) {
           "text-icon-critical-base": voice.state.isRecording(),
         }}
         onClick={handleClick}
-        disabled={voice.state.isTranscribing()}
+        disabled={voice.state.isTranscribing() || voice.state.modelStatus() === "downloading"}
       >
         <Show
           when={!voice.state.isTranscribing()}

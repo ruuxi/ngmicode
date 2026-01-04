@@ -4,38 +4,21 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProgressCircle } from "@opencode-ai/ui/progress-circle"
-import { useVoice } from "@/context/voice"
+import { useVoice, type RecordingMode } from "@/context/voice"
 import { formatKeybind } from "@/context/command"
+import { useKeybindCapture } from "@/hooks/use-keybind-capture"
 
 export function DialogVoiceSettings() {
   const dialog = useDialog()
   const voice = useVoice()
-  const [isCapturing, setIsCapturing] = createSignal(false)
-  const [capturedKeybind, setCapturedKeybind] = createSignal(voice.settings.keybind())
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (!isCapturing()) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    // Build keybind string from modifiers + key
-    const parts: string[] = []
-    if (e.ctrlKey || e.metaKey) parts.push("mod")
-    if (e.altKey) parts.push("alt")
-    if (e.shiftKey) parts.push("shift")
-
-    // Add the key if it's not just a modifier
-    const key = e.key.toLowerCase()
-    if (!["control", "meta", "alt", "shift"].includes(key)) {
-      parts.push(key)
-      setCapturedKeybind(parts.join("+"))
-      setIsCapturing(false)
-    }
-  }
+  const { isCapturing, setIsCapturing, capturedKeybind, handleKeyDown } = useKeybindCapture(
+    voice.settings.keybind(),
+  )
+  const [selectedMode, setSelectedMode] = createSignal<RecordingMode>(voice.settings.mode())
 
   const handleSave = () => {
     voice.settings.setKeybind(capturedKeybind())
+    voice.settings.setMode(selectedMode())
     voice.settings.markConfigured()
     dialog.close()
   }
@@ -132,14 +115,41 @@ export function DialogVoiceSettings() {
         {/* Recording Mode */}
         <div class="flex flex-col gap-2 pt-2 border-t border-border-base">
           <div class="text-12-medium text-text-subtle">Recording Mode</div>
-          <div class="flex items-center gap-2 px-3 py-2 rounded-md bg-surface-raised-base">
-            <Icon name="microphone" size="small" class="text-icon-base" />
-            <div class="flex-1">
-              <div class="text-13-regular text-text-base">Toggle Mode</div>
-              <div class="text-11-regular text-text-subtle">
-                Press hotkey to start, press again to stop and transcribe
+          <div class="flex flex-col gap-1">
+            <button
+              type="button"
+              class="flex items-center gap-2 px-3 py-2 rounded-md text-left"
+              classList={{
+                "bg-surface-info-base/20 ring-1 ring-border-info-base": selectedMode() === "toggle",
+                "bg-surface-raised-base hover:bg-surface-raised-hover": selectedMode() !== "toggle",
+              }}
+              onClick={() => setSelectedMode("toggle")}
+            >
+              <Icon name="microphone" size="small" class="text-icon-base" />
+              <div class="flex-1">
+                <div class="text-13-regular text-text-base">Toggle Mode</div>
+                <div class="text-11-regular text-text-subtle">
+                  Press hotkey to start, press again to stop and transcribe
+                </div>
               </div>
-            </div>
+            </button>
+            <button
+              type="button"
+              class="flex items-center gap-2 px-3 py-2 rounded-md text-left"
+              classList={{
+                "bg-surface-info-base/20 ring-1 ring-border-info-base": selectedMode() === "push-to-talk",
+                "bg-surface-raised-base hover:bg-surface-raised-hover": selectedMode() !== "push-to-talk",
+              }}
+              onClick={() => setSelectedMode("push-to-talk")}
+            >
+              <Icon name="microphone" size="small" class="text-icon-base" />
+              <div class="flex-1">
+                <div class="text-13-regular text-text-base">Push to Talk</div>
+                <div class="text-11-regular text-text-subtle">
+                  Hold hotkey to record, release to stop and transcribe
+                </div>
+              </div>
+            </button>
           </div>
         </div>
 

@@ -3,10 +3,11 @@ import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { persisted } from "@/utils/persist"
 import { usePlatform } from "./platform"
-import { useCommand } from "./command"
+import { useCommand, parseKeybind, matchKeybind } from "./command"
 import { AudioCapture, isAudioCaptureSupported } from "@/utils/audio-capture"
 
 export type ModelStatus = "not-downloaded" | "downloading" | "ready" | "error"
+export type RecordingMode = "toggle" | "push-to-talk"
 
 type SttStatus = {
   modelStatus:
@@ -28,10 +29,11 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
 
     // Persisted settings
     const [settings, setSettings, , ready] = persisted(
-      "voice.v1",
+      "voice.v2",
       createStore({
         keybind: "mod+shift+v",
         hasConfigured: false,
+        mode: "toggle" as RecordingMode,
       }),
     )
 
@@ -55,10 +57,6 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
         const status = await invoke<SttStatus>("stt_get_status")
         if (status.modelStatus.type === "Ready") {
           setModelStatus("ready")
-          // Auto-configure if models are ready on startup
-          if (!settings.hasConfigured) {
-            setSettings("hasConfigured", true)
-          }
         } else if (status.modelStatus.type === "Downloading") {
           setModelStatus("downloading")
           setDownloadProgress(status.modelStatus.progress)
@@ -180,22 +178,47 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
       setLastTranscription(null)
     }
 
-    // Register voice toggle command with keybind system
+    // Register voice command with keybind system
     if (isTauri) {
       command.register(() => [
         {
           id: "voice.toggle",
-          title: "Toggle Voice Input",
+          title: settings.mode === "toggle" ? "Toggle Voice Input" : "Push to Talk",
           category: "Voice",
           keybind: settings.keybind,
-          disabled: modelStatus() !== "ready" || !settings.hasConfigured,
+          disabled: modelStatus() !== "ready",
           onSelect: () => {
-            if (settings.hasConfigured && modelStatus() === "ready") {
-              toggle()
+            if (modelStatus() === "ready") {
+              if (settings.mode === "toggle") {
+                toggle()
+              } else {
+                // Push-to-talk: start recording on keydown
+                startRecording()
+              }
             }
           },
         },
       ])
+
+      // Handle keyup for push-to-talk mode
+      const handleKeyUp = (event: KeyboardEvent) => {
+        if (settings.mode !== "push-to-talk") return
+        if (modelStatus() !== "ready") return
+        if (!isRecording()) return
+
+        const keybinds = parseKeybind(settings.keybind)
+        if (matchKeybind(keybinds, event)) {
+          stopRecording()
+        }
+      }
+
+      onMount(() => {
+        document.addEventListener("keyup", handleKeyUp)
+      })
+
+      onCleanup(() => {
+        document.removeEventListener("keyup", handleKeyUp)
+      })
     }
 
     const markConfigured = () => {
@@ -206,6 +229,10 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
       setSettings("keybind", keybind)
     }
 
+    const setMode = (mode: RecordingMode) => {
+      setSettings("mode", mode)
+    }
+
     return {
       // Settings
       settings: {
@@ -213,6 +240,8 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
         setKeybind,
         hasConfigured: () => settings.hasConfigured,
         markConfigured,
+        mode: () => settings.mode,
+        setMode,
         ready,
       },
 

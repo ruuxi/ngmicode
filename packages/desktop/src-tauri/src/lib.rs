@@ -118,12 +118,8 @@ async fn stt_stop_and_transcribe(app: AppHandle) -> Result<String, String> {
         .try_state::<stt::SharedSttState>()
         .ok_or("STT state not found")?;
 
-    let audio = {
-        let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        state.stop_recording()
-    };
-
     let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let audio = state.stop_recording();
     state.transcribe(&audio)
 }
 
