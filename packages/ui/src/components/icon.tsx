@@ -59,6 +59,8 @@ const icons = {
   download: `<path d="M13.9583 10.6257L10 14.584L6.04167 10.6257M10 2.08398V13.959M16.25 17.9173H3.75" stroke="currentColor" stroke-linecap="square"/>`,
   menu: `<path d="M2.5 5H17.5M2.5 10H17.5M2.5 15H17.5" stroke="currentColor" stroke-linecap="square"/>`,
   server: `<rect x="3.35547" y="1.92969" width="13.2857" height="16.1429" stroke="currentColor"/><rect x="3.35547" y="11.9297" width="13.2857" height="6.14286" stroke="currentColor"/><rect x="12.8555" y="14.2852" width="1.42857" height="1.42857" fill="currentColor"/><rect x="10" y="14.2852" width="1.42857" height="1.42857" fill="currentColor"/>`,
+  microphone: `<path d="M10 2.5C8.619 2.5 7.5 3.619 7.5 5V10C7.5 11.381 8.619 12.5 10 12.5C11.381 12.5 12.5 11.381 12.5 10V5C12.5 3.619 11.381 2.5 10 2.5Z" stroke="currentColor"/><path d="M5 8.75V10C5 12.761 7.239 15 10 15C12.761 15 15 12.761 15 10V8.75" stroke="currentColor"/><path d="M10 15V17.5" stroke="currentColor"/>`,
+  "microphone-recording": `<path d="M10 2.5C8.619 2.5 7.5 3.619 7.5 5V10C7.5 11.381 8.619 12.5 10 12.5C11.381 12.5 12.5 11.381 12.5 10V5C12.5 3.619 11.381 2.5 10 2.5Z" fill="currentColor" stroke="currentColor"/><path d="M5 8.75V10C5 12.761 7.239 15 10 15C12.761 15 15 12.761 15 10V8.75" stroke="currentColor"/><path d="M10 15V17.5" stroke="currentColor"/>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {
