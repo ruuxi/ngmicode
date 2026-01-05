@@ -5,7 +5,7 @@ import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { stream, streamSSE } from "hono/streaming"
+import { stream, streamSSE, type SSEStreamingApi } from "hono/streaming"
 import { proxy } from "hono/proxy"
 import { Session } from "../session"
 import { Identifier } from "../id/id"
@@ -60,6 +60,19 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace Server {
   const log = Log.create({ service: "server" })
+
+  /**
+   * Create SSE heartbeat interval to prevent client timeouts (WKWebView 60s default)
+   */
+  function createHeartbeat(stream: SSEStreamingApi, format: "global" | "instance") {
+    return setInterval(() => {
+      const data =
+        format === "global"
+          ? { payload: { type: "server.heartbeat", properties: {} } }
+          : { type: "server.heartbeat", properties: {} }
+      stream.writeSSE({ data: JSON.stringify(data) })
+    }, 30000)
+  }
 
   /**
    * Populate cache from filesystem sessions
@@ -258,17 +271,7 @@ export namespace Server {
             }
             GlobalBus.on("event", handler)
 
-            // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
-            const heartbeat = setInterval(() => {
-              stream.writeSSE({
-                data: JSON.stringify({
-                  payload: {
-                    type: "server.heartbeat",
-                    properties: {},
-                  },
-                }),
-              })
-            }, 30000)
+            const heartbeat = createHeartbeat(stream, "global")
 
             await new Promise<void>((resolve) => {
               stream.onAbort(() => {
@@ -895,7 +898,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -987,7 +990,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator(
@@ -1037,7 +1040,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", Session.initialize.schema.omit({ sessionID: true })),
@@ -1100,7 +1103,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -1129,7 +1132,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -1140,11 +1143,11 @@ export namespace Server {
         },
       )
       .get(
-        "/session/:sessionID/diff",
+        "/session/:sessionID/message/:messageID/diff",
         describeRoute({
           summary: "Get message diff",
           description: "Get the file changes (diff) that resulted from a specific user message in the session.",
-          operationId: "session.diff",
+          operationId: "message.diff",
           responses: {
             200: {
               description: "Successfully retrieved diff",
@@ -1160,20 +1163,14 @@ export namespace Server {
           "param",
           z.object({
             sessionID: SessionSummary.diff.schema.shape.sessionID,
-          }),
-        ),
-        validator(
-          "query",
-          z.object({
             messageID: SessionSummary.diff.schema.shape.messageID,
           }),
         ),
         async (c) => {
-          const query = c.req.valid("query")
           const params = c.req.valid("param")
           const result = await SessionSummary.diff({
             sessionID: params.sessionID,
-            messageID: query.messageID,
+            messageID: params.messageID,
           })
           return c.json(result)
         },
@@ -1230,7 +1227,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator(
@@ -1289,7 +1286,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator(
@@ -1328,7 +1325,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -1362,7 +1359,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
             messageID: z.string().meta({ description: "Message ID" }),
           }),
         ),
@@ -1395,7 +1392,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
             messageID: z.string().meta({ description: "Message ID" }),
             partID: z.string().meta({ description: "Part ID" }),
           }),
@@ -1430,7 +1427,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
             messageID: z.string().meta({ description: "Message ID" }),
             partID: z.string().meta({ description: "Part ID" }),
           }),
@@ -1474,7 +1471,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
@@ -1506,7 +1503,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
@@ -1546,7 +1543,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", SessionPrompt.CommandInput.omit({ sessionID: true })),
@@ -1578,7 +1575,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string().meta({ description: "Session ID" }),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", SessionPrompt.ShellInput.omit({ sessionID: true })),
@@ -1610,7 +1607,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         validator("json", SessionRevert.RevertInput.omit({ sessionID: true })),
@@ -1645,7 +1642,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -1764,7 +1761,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
             permissionID: z.string(),
           }),
         ),
@@ -1916,7 +1913,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -2006,7 +2003,7 @@ export namespace Server {
         validator(
           "param",
           z.object({
-            sessionID: z.string(),
+            sessionID: Identifier.schema("session"),
           }),
         ),
         async (c) => {
@@ -2801,15 +2798,7 @@ export namespace Server {
               }
             })
 
-            // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
-            const heartbeat = setInterval(() => {
-              stream.writeSSE({
-                data: JSON.stringify({
-                  type: "server.heartbeat",
-                  properties: {},
-                }),
-              })
-            }, 30000)
+            const heartbeat = createHeartbeat(stream, "instance")
 
             await new Promise<void>((resolve) => {
               stream.onAbort(() => {
