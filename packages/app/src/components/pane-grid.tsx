@@ -1,9 +1,9 @@
-import { For, Show, createMemo, onCleanup, type ParentProps } from "solid-js"
+import { For, createMemo, createSignal, createEffect, untrack, onCleanup, type ParentProps } from "solid-js"
 import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
 
-const MIN_PANE_WIDTH_PERCENT = 15
-const MIN_PANE_HEIGHT_PX = 80
-const MAX_PANE_HEIGHT_RATIO = 0.8
+const MIN_PANE_SIZE_PERCENT = 15
+const FLIP_DURATION = 200
+const GRID_GAP = 6
 
 type PaneGridProps = ParentProps<{
   panes: PaneConfig[]
@@ -13,168 +13,328 @@ type PaneGridProps = ParentProps<{
 export function PaneGrid(props: PaneGridProps) {
   const multiPane = useMultiPane()
   let containerRef: HTMLDivElement | undefined
-  let activeResizeCleanup: (() => void) | null = null
-
-  onCleanup(() => activeResizeCleanup?.())
+  const paneRefs = new Map<string, HTMLDivElement>()
+  let previousRects = new Map<string, DOMRect>()
+  let disposed = false
 
   const layout = createMemo(() => multiPane.layout())
-  const customWidths = createMemo(() => multiPane.customWidths())
-  const customHeights = createMemo(() => multiPane.customHeights())
+  const [paneIds, setPaneIds] = createSignal<string[]>([])
+  const [lastPage, setLastPage] = createSignal(multiPane.currentPage())
 
-  const rows = createMemo(() => {
-    const panes = props.panes
-    const cols = layout().columns
-    const result: PaneConfig[][] = []
-
-    for (let i = 0; i < panes.length; i += cols) {
-      result.push(panes.slice(i, i + cols))
-    }
-
-    return result
+  onCleanup(() => {
+    disposed = true
+    paneRefs.clear()
+    previousRects.clear()
   })
 
-  const defaultColumnWidth = createMemo(() => {
-    const cols = layout().columns
-    return 100 / cols
+  // Capture current positions of all panes
+  function capturePositions(): Map<string, DOMRect> {
+    const rects = new Map<string, DOMRect>()
+    for (const [id, el] of paneRefs) {
+      rects.set(id, el.getBoundingClientRect())
+    }
+    return rects
+  }
+
+  // Watch for pane changes and animate
+  createEffect(() => {
+    const currentIds = props.panes.map((p) => p.id)
+    const prevIds = untrack(() => paneIds())
+    const currentPage = multiPane.currentPage()
+    const prevPage = untrack(() => lastPage())
+
+    // Update tracked state (untracked to prevent re-triggering)
+    untrack(() => {
+      setPaneIds(currentIds)
+      setLastPage(currentPage)
+    })
+
+    // Skip initial mount
+    if (prevIds.length === 0) {
+      requestAnimationFrame(() => {
+        if (disposed) return
+        previousRects = capturePositions()
+      })
+      return
+    }
+
+    // Skip animation on page switch (just capture new positions)
+    if (currentPage !== prevPage) {
+      requestAnimationFrame(() => {
+        if (disposed) return
+        previousRects = capturePositions()
+      })
+      return
+    }
+
+    // Clean up refs for removed panes
+    const currentIdSet = new Set(currentIds)
+    for (const id of prevIds) {
+      if (!currentIdSet.has(id)) {
+        paneRefs.delete(id)
+      }
+    }
+
+    // Wait for DOM to update with new panes
+    requestAnimationFrame(() => {
+      if (disposed) return
+      const prevIdSet = new Set(prevIds)
+
+      for (const [id, el] of paneRefs) {
+        const isNew = !prevIdSet.has(id)
+        const prevRect = previousRects.get(id)
+
+        if (isNew || !prevRect) {
+          // New pane - fade in using Web Animations API
+          el.animate(
+            [
+              { opacity: 0, transform: "scale(0.95)" },
+              { opacity: 1, transform: "scale(1)" },
+            ],
+            { duration: FLIP_DURATION, easing: "ease-out", fill: "forwards" },
+          )
+          continue
+        }
+
+        const currentRect = el.getBoundingClientRect()
+        const deltaX = prevRect.left - currentRect.left
+        const deltaY = prevRect.top - currentRect.top
+        const scaleX = prevRect.width / currentRect.width
+        const scaleY = prevRect.height / currentRect.height
+
+        // Skip if no significant change
+        if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1 && Math.abs(scaleX - 1) < 0.01 && Math.abs(scaleY - 1) < 0.01) {
+          continue
+        }
+
+        // FLIP animation using Web Animations API
+        el.animate(
+          [
+            { transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`, transformOrigin: "top left" },
+            { transform: "none", transformOrigin: "top left" },
+          ],
+          { duration: FLIP_DURATION, easing: "ease-out" },
+        )
+      }
+
+      // Capture new positions after animation
+      setTimeout(() => {
+        if (disposed) return
+        previousRects = capturePositions()
+      }, FLIP_DURATION)
+    })
   })
 
-  const getRowHeight = (rowIndex: number, rowCount: number) => {
-    const custom = customHeights()[rowIndex]
-    if (custom) return `${custom}px`
-    return `${100 / rowCount}%`
-  }
+  const [colSizes, setColSizes] = createSignal<number[] | null>(null)
+  const [rowSizes, setRowSizes] = createSignal<number[] | null>(null)
 
-  function handleColumnResize(rowIndex: number, colIndex: number, newWidthPercent: number) {
-    const row = rows()[rowIndex]
-    if (!row || colIndex >= row.length - 1) return
-
-    const currentPane = row[colIndex]
-    const nextPane = row[colIndex + 1]
-
-    const currentWidth = customWidths()[currentPane.id] ?? defaultColumnWidth()
-    const nextWidth = customWidths()[nextPane.id] ?? defaultColumnWidth()
-    const totalWidth = currentWidth + nextWidth
-
-    const clampedWidth = Math.max(MIN_PANE_WIDTH_PERCENT, Math.min(newWidthPercent, totalWidth - MIN_PANE_WIDTH_PERCENT))
-    const newNextWidth = totalWidth - clampedWidth
-
-    multiPane.setPaneWidth(currentPane.id, clampedWidth)
-    multiPane.setPaneWidth(nextPane.id, newNextWidth)
-  }
-
-  function handleRowResize(rowIndex: number, newHeight: number) {
-    multiPane.setRowHeight(rowIndex, newHeight)
-  }
-
-  function createColumnResizeHandler(rowIndex: number, colIndex: number, paneId: string) {
-    return (e: MouseEvent) => {
-      e.preventDefault()
-      const startX = e.clientX
-      const containerWidth = containerRef?.clientWidth ?? window.innerWidth
-      const startWidth = customWidths()[paneId] ?? defaultColumnWidth()
-
-      document.body.style.userSelect = "none"
-      document.body.style.cursor = "col-resize"
-
-      const onMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = moveEvent.clientX - startX
-        const deltaPercent = (deltaX / containerWidth) * 100
-        const newWidth = startWidth + deltaPercent
-        handleColumnResize(rowIndex, colIndex, newWidth)
-      }
-
-      const cleanup = () => {
-        document.body.style.userSelect = ""
-        document.body.style.cursor = ""
-        document.removeEventListener("mousemove", onMouseMove)
-        document.removeEventListener("mouseup", onMouseUp)
-        activeResizeCleanup = null
-      }
-
-      const onMouseUp = () => cleanup()
-
-      activeResizeCleanup = cleanup
-      document.addEventListener("mousemove", onMouseMove)
-      document.addEventListener("mouseup", onMouseUp)
+  // Use percentages for animatable transitions
+  const actualGridCols = createMemo(() => {
+    const cols = layout().columns
+    const sizes = colSizes()
+    if (sizes && sizes.length === cols) {
+      const total = sizes.reduce((a, b) => a + b, 0)
+      return sizes.map((s) => `${(s / total) * 100}%`).join(" ")
     }
-  }
+    // Equal distribution
+    const pct = 100 / cols
+    return Array(cols).fill(`${pct}%`).join(" ")
+  })
 
-  function createRowResizeHandler(rowIndex: number) {
-    return (e: MouseEvent) => {
-      e.preventDefault()
-      const startY = e.clientY
-      const containerHeight = containerRef?.clientHeight ?? window.innerHeight
-      const startHeight = customHeights()[rowIndex] ?? containerHeight / rows().length
-
-      document.body.style.userSelect = "none"
-      document.body.style.cursor = "row-resize"
-
-      const onMouseMove = (moveEvent: MouseEvent) => {
-        const deltaY = moveEvent.clientY - startY
-        const newHeight = Math.max(MIN_PANE_HEIGHT_PX, Math.min(startHeight + deltaY, containerHeight * MAX_PANE_HEIGHT_RATIO))
-        handleRowResize(rowIndex, newHeight)
-      }
-
-      const cleanup = () => {
-        document.body.style.userSelect = ""
-        document.body.style.cursor = ""
-        document.removeEventListener("mousemove", onMouseMove)
-        document.removeEventListener("mouseup", onMouseUp)
-        activeResizeCleanup = null
-      }
-
-      const onMouseUp = () => cleanup()
-
-      activeResizeCleanup = cleanup
-      document.addEventListener("mousemove", onMouseMove)
-      document.addEventListener("mouseup", onMouseUp)
+  const actualGridRows = createMemo(() => {
+    const rows = layout().rows
+    const sizes = rowSizes()
+    if (sizes && sizes.length === rows) {
+      const total = sizes.reduce((a, b) => a + b, 0)
+      return sizes.map((s) => `${(s / total) * 100}%`).join(" ")
     }
+    // Equal distribution
+    const pct = 100 / rows
+    return Array(rows).fill(`${pct}%`).join(" ")
+  })
+
+  function handleResizeStart(type: "col" | "row", index: number, e: MouseEvent) {
+    e.preventDefault()
+    const count = type === "col" ? layout().columns : layout().rows
+    const gap = GRID_GAP
+
+    // Initialize sizes if not set
+    const currentSizes = type === "col" ? colSizes() : rowSizes()
+    const startSizes = currentSizes ?? Array(count).fill(1)
+
+    document.body.style.userSelect = "none"
+    document.body.style.cursor = type === "col" ? "col-resize" : "row-resize"
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!containerRef) return
+
+      const rect = containerRef.getBoundingClientRect()
+      const containerSize = type === "col" ? rect.width : rect.height
+      const cursorPos = type === "col" ? moveEvent.clientX - rect.left : moveEvent.clientY - rect.top
+
+      // Account for gaps: total gap space = (count - 1) * gap
+      const totalGapSpace = (count - 1) * gap
+      const availableSpace = containerSize - totalGapSpace
+
+      // Calculate cumulative gap space before this handle
+      const gapsBefore = index * gap
+
+      // The cursor position relative to available content space
+      // Subtract the gaps that come before the handle position
+      const contentPosBefore = cursorPos - gapsBefore - gap / 2
+      const contentPosAfter = availableSpace - contentPosBefore
+
+      // Convert to proportions
+      const totalFr = startSizes.reduce((a, b) => a + b, 0)
+      const minFr = (MIN_PANE_SIZE_PERCENT / 100) * totalFr
+
+      // Calculate fr values based on cursor position
+      let beforeFr = (contentPosBefore / availableSpace) * totalFr
+      let afterFr = (contentPosAfter / availableSpace) * totalFr
+
+      // Clamp to min size
+      if (beforeFr < minFr) {
+        beforeFr = minFr
+        afterFr = totalFr - beforeFr
+      } else if (afterFr < minFr) {
+        afterFr = minFr
+        beforeFr = totalFr - afterFr
+      }
+
+      // Distribute the fr values to the cells
+      const newSizes = [...startSizes]
+
+      // Sum of fr values before and after the handle
+      const sumBefore = startSizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+      const sumAfter = startSizes.slice(index + 1).reduce((a, b) => a + b, 0)
+
+      // Scale each side proportionally
+      for (let i = 0; i <= index; i++) {
+        newSizes[i] = (startSizes[i] / sumBefore) * beforeFr
+      }
+      for (let i = index + 1; i < count; i++) {
+        newSizes[i] = (startSizes[i] / sumAfter) * afterFr
+      }
+
+      if (type === "col") {
+        setColSizes(newSizes)
+      } else {
+        setRowSizes(newSizes)
+      }
+    }
+
+    const onMouseUp = () => {
+      document.body.style.userSelect = ""
+      document.body.style.cursor = ""
+      document.removeEventListener("mousemove", onMouseMove)
+      document.removeEventListener("mouseup", onMouseUp)
+    }
+
+    document.addEventListener("mousemove", onMouseMove)
+    document.addEventListener("mouseup", onMouseUp)
   }
+
+  // Reset custom sizes when layout changes
+  let prevCols = layout().columns
+  let prevRows = layout().rows
+  createEffect(() => {
+    const cols = layout().columns
+    const rows = layout().rows
+    if (cols !== prevCols) {
+      setColSizes(null)
+      prevCols = cols
+    }
+    if (rows !== prevRows) {
+      setRowSizes(null)
+      prevRows = rows
+    }
+  })
+
+  // Build resize handles
+  const colHandles = createMemo(() => {
+    const cols = layout().columns
+    return Array.from({ length: cols - 1 }, (_, i) => i)
+  })
+
+  const rowHandles = createMemo(() => {
+    const rows = layout().rows
+    return Array.from({ length: rows - 1 }, (_, i) => i)
+  })
 
   return (
-    <div ref={containerRef} class="flex-1 min-h-0 flex flex-col">
-      <For each={rows()}>
-        {(row, rowIndex) => (
-          <>
+    <div ref={containerRef} class="flex-1 min-h-0 relative">
+      {/* Main grid */}
+      <div
+        class="size-full grid"
+        style={{
+          "grid-template-columns": actualGridCols(),
+          "grid-template-rows": actualGridRows(),
+          gap: `${GRID_GAP}px`,
+        }}
+      >
+        <For each={props.panes}>
+          {(pane) => (
             <div
-              class="flex min-h-0"
-              style={{ height: getRowHeight(rowIndex(), rows().length) }}
+              ref={(el) => paneRefs.set(pane.id, el)}
+              class="relative min-w-0 min-h-0 overflow-hidden"
             >
-              <For each={row}>
-                {(pane, colIndex) => {
-                  const isLastInRow = createMemo(() => colIndex() === row.length - 1)
-                  const paneWidth = createMemo(() => {
-                    const custom = customWidths()[pane.id]
-                    return custom ?? defaultColumnWidth()
-                  })
-
-                  return (
-                    <>
-                      <div
-                        class="relative min-w-0 min-h-0"
-                        style={{ width: `${paneWidth()}%` }}
-                      >
-                        {props.renderPane(pane)}
-                      </div>
-                      <Show when={!isLastInRow()}>
-                        <div
-                          class="w-1 shrink-0 cursor-col-resize hover:bg-border-accent-base active:bg-border-accent-base transition-colors"
-                          onMouseDown={createColumnResizeHandler(rowIndex(), colIndex(), pane.id)}
-                        />
-                      </Show>
-                    </>
-                  )
-                }}
-              </For>
+              {props.renderPane(pane)}
             </div>
-            <Show when={rowIndex() < rows().length - 1}>
-              <div
-                class="h-1 shrink-0 cursor-row-resize hover:bg-border-accent-base active:bg-border-accent-base transition-colors"
-                onMouseDown={createRowResizeHandler(rowIndex())}
-              />
-            </Show>
-          </>
-        )}
+          )}
+        </For>
+      </div>
+
+      {/* Column resize handles */}
+      <For each={colHandles()}>
+        {(index) => {
+          const handlePos = createMemo(() => {
+            const cols = layout().columns
+            const sizes = colSizes() ?? Array(cols).fill(1)
+            const total = sizes.reduce((a, b) => a + b, 0)
+            const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+            const fraction = before / total
+            const totalGaps = (cols - 1) * GRID_GAP
+            // fraction% of container - fraction of gap space + gaps before handle + half gap
+            const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+            return `calc(${fraction * 100}% + ${pxOffset}px)`
+          })
+
+          return (
+            <div
+              class="absolute top-0 bottom-0 w-3 -translate-x-1/2 cursor-col-resize z-10 group"
+              style={{ left: handlePos() }}
+              onMouseDown={(e) => handleResizeStart("col", index, e)}
+            >
+              <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
+            </div>
+          )
+        }}
+      </For>
+
+      {/* Row resize handles */}
+      <For each={rowHandles()}>
+        {(index) => {
+          const handlePos = createMemo(() => {
+            const rows = layout().rows
+            const sizes = rowSizes() ?? Array(rows).fill(1)
+            const total = sizes.reduce((a, b) => a + b, 0)
+            const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+            const fraction = before / total
+            const totalGaps = (rows - 1) * GRID_GAP
+            const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+            return `calc(${fraction * 100}% + ${pxOffset}px)`
+          })
+
+          return (
+            <div
+              class="absolute left-0 right-0 h-3 -translate-y-1/2 cursor-row-resize z-10 group"
+              style={{ top: handlePos() }}
+              onMouseDown={(e) => handleResizeStart("row", index, e)}
+            >
+              <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
+            </div>
+          )
+        }}
       </For>
     </div>
   )

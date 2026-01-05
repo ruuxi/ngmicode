@@ -113,9 +113,10 @@ function PaneContent(props: ActivePaneProps) {
 
   return (
     <div
-      class="relative size-full flex flex-col overflow-hidden bg-background-base"
+      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
+        "opacity-60": !isFocused(),
       }}
       onMouseDown={(e) => {
         // Only focus if clicking non-interactive elements
@@ -282,9 +283,10 @@ function EmptyPaneContent(props: { paneId: string }) {
 
   return (
     <div
-      class="relative size-full flex flex-col overflow-hidden bg-background-base"
+      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
+        "opacity-60": !isFocused(),
       }}
       onMouseDown={() => multiPane.setFocused(props.paneId)}
     >

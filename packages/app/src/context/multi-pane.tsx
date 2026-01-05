@@ -16,8 +16,6 @@ export type PaneLayout = {
 type MultiPaneState = {
   panes: PaneConfig[]
   currentPage: number
-  customWidths: Record<string, number>
-  customHeights: Record<number, number>
   focusedPaneId?: string
 }
 
@@ -44,8 +42,6 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
     const [store, setStore] = createStore<MultiPaneState>({
       panes: [],
       currentPage: 0,
-      customWidths: {},
-      customHeights: {},
       focusedPaneId: undefined,
     })
 
@@ -72,8 +68,6 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       layout,
       focusedPaneId: createMemo(() => store.focusedPaneId),
       focusedPane,
-      customWidths: createMemo(() => store.customWidths),
-      customHeights: createMemo(() => store.customHeights),
 
       addPane(directory?: string, sessionId?: string) {
         if (store.panes.length >= MAX_TOTAL_PANES) {
@@ -99,12 +93,6 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
 
         batch(() => {
           setStore("panes", remaining)
-          setStore(
-            "customWidths",
-            produce((widths) => {
-              delete widths[id]
-            }),
-          )
 
           if (store.focusedPaneId === id) {
             const newFocus = remaining[Math.min(index, remaining.length - 1)]
@@ -148,21 +136,6 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         }
       },
 
-      setPaneWidth(id: string, width: number) {
-        setStore("customWidths", id, width)
-      },
-
-      setRowHeight(rowIndex: number, height: number) {
-        setStore("customHeights", rowIndex, height)
-      },
-
-      resetCustomSizes() {
-        batch(() => {
-          setStore("customWidths", {})
-          setStore("customHeights", {})
-        })
-      },
-
       movePane(id: string, toIndex: number) {
         const index = store.panes.findIndex((p) => p.id === id)
         if (index === -1) return
@@ -190,8 +163,6 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
           setStore("panes", [])
           setStore("currentPage", 0)
           setStore("focusedPaneId", undefined)
-          setStore("customWidths", {})
-          setStore("customHeights", {})
         })
       },
     }
