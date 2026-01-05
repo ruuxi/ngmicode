@@ -78,6 +78,7 @@ export namespace Cache {
     -- Indices for common queries
     CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(projectID);
     CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parentID);
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionID);
     CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
   `
@@ -124,26 +125,26 @@ export namespace Cache {
 
   // ============ Session Operations ============
 
-  export namespace Session {
-    interface SessionRow {
-      id: string
-      projectID: string
-      parentID: string | null
-      title: string
-      directory: string
-      version: string | null
-      created_at: number | null
-      updated_at: number | null
-      archived_at: number | null
-      additions: number
-      deletions: number
-      files_changed: number
-      share_url: string | null
-      worktree_path: string | null
-      worktree_branch: string | null
-      data: string | null
-    }
+  export interface SessionRow {
+    id: string
+    projectID: string
+    parentID: string | null
+    title: string
+    directory: string
+    version: string | null
+    created_at: number | null
+    updated_at: number | null
+    archived_at: number | null
+    additions: number
+    deletions: number
+    files_changed: number
+    share_url: string | null
+    worktree_path: string | null
+    worktree_branch: string | null
+    data: string | null
+  }
 
+  export namespace Session {
     /**
      * Get all sessions for a project
      */
@@ -238,6 +239,32 @@ export namespace Cache {
         .query<{ count: number }, [string]>(`SELECT COUNT(*) as count FROM sessions WHERE projectID = ?`)
         .get(projectID)
       return result?.count ?? 0
+    }
+
+    /**
+     * Get child sessions by parentID
+     */
+    export function children(parentID: string): SessionRow[] {
+      const db = get()
+      return db
+        .query<SessionRow, [string]>(`SELECT * FROM sessions WHERE parentID = ? ORDER BY updated_at DESC`)
+        .all(parentID)
+    }
+
+    /**
+     * Delete multiple sessions and their messages in a single transaction
+     * Used for cascading deletes to ensure atomicity
+     */
+    export function removeMany(sessionIDs: string[]) {
+      if (sessionIDs.length === 0) return
+      const db = get()
+      const deleteAll = db.transaction(() => {
+        for (const id of sessionIDs) {
+          db.run(`DELETE FROM messages WHERE sessionID = ?`, [id])
+          db.run(`DELETE FROM sessions WHERE id = ?`, [id])
+        }
+      })
+      deleteAll()
     }
   }
 

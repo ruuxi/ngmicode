@@ -14,7 +14,9 @@ bun run tauri dev
 # Type checking
 bun turbo typecheck
 
-# Tests - uses Bun's built-in test runner (run from packages/opencode, not root)
+# Tests - uses Bun's built-in test runner
+# IMPORTANT: On Windows, run tests through WSL/Linux (path handling issues)
+# From WSL: cd /mnt/c/<path-to-repo>/packages/opencode && bun test
 cd packages/opencode && bun test
 bun test <file>           # Single test file
 bun test --coverage       # Run with coverage report
@@ -155,4 +157,4 @@ const ctx = {
 
 - New features: Add tests covering the main functionality
 - Bug fixes: Add a test that reproduces the bug before fixing
-- Run `bun test` from `packages/opencode` to verify before committing
+- Run tests through WSL/Linux before committing (Windows has path handling issues)

@@ -687,14 +687,71 @@ export namespace MessageV2 {
     const log = Log.create({ service: "part-store" })
 
     const DEBOUNCE_MS = 100
+    const MAX_CACHE_SIZE = 100 // Max number of messages to cache
 
     interface StoredMessageWithParts {
       info: Info
       parts: Part[]
     }
 
-    // In-memory cache of parts by messageID
-    const partsCache = new Map<string, Part[]>()
+    /**
+     * Simple LRU cache with eviction callback
+     */
+    class LRUCache<K, V> {
+      private cache = new Map<K, V>()
+      private order: K[] = []
+
+      constructor(
+        private maxSize: number,
+        private onEvict?: (key: K, value: V) => void,
+      ) {}
+
+      get(key: K): V | undefined {
+        const value = this.cache.get(key)
+        if (value !== undefined) {
+          // Move to end (most recently used)
+          const idx = this.order.indexOf(key)
+          if (idx > -1) {
+            this.order.splice(idx, 1)
+            this.order.push(key)
+          }
+        }
+        return value
+      }
+
+      set(key: K, value: V): void {
+        if (this.cache.has(key)) {
+          const idx = this.order.indexOf(key)
+          if (idx > -1) this.order.splice(idx, 1)
+        } else if (this.cache.size >= this.maxSize) {
+          const oldest = this.order.shift()
+          if (oldest !== undefined) {
+            const evicted = this.cache.get(oldest)
+            this.cache.delete(oldest)
+            if (evicted !== undefined && this.onEvict) {
+              this.onEvict(oldest, evicted)
+            }
+          }
+        }
+        this.cache.set(key, value)
+        this.order.push(key)
+      }
+
+      has(key: K): boolean {
+        return this.cache.has(key)
+      }
+
+      delete(key: K): boolean {
+        const idx = this.order.indexOf(key)
+        if (idx > -1) this.order.splice(idx, 1)
+        return this.cache.delete(key)
+      }
+
+      clear(): void {
+        this.cache.clear()
+        this.order = []
+      }
+    }
 
     // Pending flush timers by messageID
     const pendingFlush = new Map<string, Timer>()
@@ -702,7 +759,27 @@ export namespace MessageV2 {
     // Track dirty messages that need to be written
     const dirtyMessages = new Set<string>()
 
-    // Message info cache for writes
+    // Eviction handler - flush dirty entries before evicting
+    function handleEviction(key: string, _parts: Part[]) {
+      if (dirtyMessages.has(key)) {
+        const [sessionID, messageID] = key.split(":")
+        flushMessage(sessionID, messageID).catch((e) => {
+          log.error("failed to flush on eviction", { key, error: e })
+        })
+      }
+      messageInfoCache.delete(key)
+      dirtyMessages.delete(key)
+      const timer = pendingFlush.get(key)
+      if (timer) {
+        clearTimeout(timer)
+        pendingFlush.delete(key)
+      }
+    }
+
+    // In-memory cache of parts by messageID with LRU eviction
+    const partsCache = new LRUCache<string, Part[]>(MAX_CACHE_SIZE, handleEviction)
+
+    // Message info cache (bounded by parts cache eviction)
     const messageInfoCache = new Map<string, Info>()
 
     function getCacheKey(sessionID: string, messageID: string) {
