@@ -1,8 +1,11 @@
+added claude code. can use subscription or api.
+desktop app only, removed a bunch of other stuff (no tui)
+multi-view panels so you can view multiple agents on a single screen (up to 12)
+voice input.
+some ui improvements.
+
+
 claude code desktop app. no open code. we dont need it. just give me more claude
 please.
 
-removed irrelavent stuff. local only, desktop app only. no tui. we dont need tui. we arent boomers.
-multi-view. 12 sessions on one screen. git worktrees. voice input.
-use claude subscription.
-faster. faster.
-who made this. of course not me. claude.
+made by claude
