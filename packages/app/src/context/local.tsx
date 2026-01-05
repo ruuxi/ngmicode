@@ -141,6 +141,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const omo = active?.settings?.ohMyOpenCode
 
         if (active?.id === "oh-my-opencode" && omo) {
+          const sisyphusDisabled = omo.sisyphusAgent?.disabled === true
+          const replacePlan = omo.sisyphusAgent?.replacePlan ?? true
+
+          if (!sisyphusDisabled) {
+            disabled.add("build")
+            if (replacePlan) disabled.add("plan")
+          }
+
           for (const name of omo.disabledAgents ?? []) disabled.add(name)
           if (omo.sisyphusAgent?.disabled) disabled.add("Sisyphus")
           if (omo.sisyphusAgent?.defaultBuilderEnabled === false) disabled.add("OpenCode-Builder")
@@ -234,9 +242,25 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     const agent = (() => {
-      const list = createMemo(() =>
-        mode.filterAgents(sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden)),
-      )
+      const list = createMemo(() => {
+        const active = mode.current()
+        const allowed = active?.allowedAgents?.length ? new Set(active.allowedAgents) : undefined
+        const candidates = sync.data.agent
+        const visible = allowed
+          ? candidates.filter((agent) => allowed.has(agent.name))
+          : candidates.filter((agent) => agent.mode !== "subagent" && !agent.hidden)
+
+        if (active?.id === "opencode" || active?.id === "claude-code") {
+          for (const name of ["build", "plan"]) {
+            const agent = candidates.find((item) => item.name === name)
+            if (agent && !visible.some((item) => item.name === name)) {
+              visible.push(agent)
+            }
+          }
+        }
+
+        return mode.filterAgents(visible, active)
+      })
       const [store, setStore] = createStore<{
         current?: string
       }>({
@@ -393,7 +417,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const a = agent.current()
         if (!a) return undefined
         const key = getFirstValidModel(
-          () => ephemeral.model[a.name],
+          () => (mode.current()?.id === "oh-my-opencode" ? undefined : ephemeral.model[a.name]),
           () => a.model,
           fallbackModel,
         )

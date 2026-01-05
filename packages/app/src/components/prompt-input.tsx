@@ -152,6 +152,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
+  const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
 
   const [store, setStore] = createStore<{
     popover: "at" | "slash" | null
@@ -1595,26 +1596,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </DropdownMenu.Portal>
                 </DropdownMenu>
                 <Show
-                  when={providers.paid().length > 0}
+                  when={!isOhMyMode()}
                   fallback={
-                    <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                      <Button as="div" variant="ghost" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
-                        {local.model.current()?.name ?? "Select model"}
-                        <Icon name="chevron-down" size="small" />
+                    <Tooltip placement="top" value="Model selection is managed by Oh My OpenCode">
+                      <Button variant="ghost" disabled>
+                        Default
                       </Button>
-                    </TooltipKeybind>
+                    </Tooltip>
                   }
                 >
-                  <ModelSelectorPopover>
-                    <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                      <Button as="div" variant="ghost">
-                        {local.model.current()?.name ?? "Select model"}
-                        <Icon name="chevron-down" size="small" />
-                      </Button>
-                    </TooltipKeybind>
-                  </ModelSelectorPopover>
+                  <Show
+                    when={providers.paid().length > 0}
+                    fallback={
+                      <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
+                        <Button as="div" variant="ghost" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
+                          {local.model.current()?.name ?? "Select model"}
+                          <Icon name="chevron-down" size="small" />
+                        </Button>
+                      </TooltipKeybind>
+                    }
+                  >
+                    <ModelSelectorPopover>
+                      <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
+                        <Button as="div" variant="ghost">
+                          {local.model.current()?.name ?? "Select model"}
+                          <Icon name="chevron-down" size="small" />
+                        </Button>
+                      </TooltipKeybind>
+                    </ModelSelectorPopover>
+                  </Show>
                 </Show>
-                <Show when={local.model.variant.list().length > 0}>
+                <Show when={!isOhMyMode() && local.model.variant.list().length > 0}>
                   <TooltipKeybind
                     placement="top"
                     title="Thinking effort"

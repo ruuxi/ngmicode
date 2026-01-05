@@ -1,4 +1,4 @@
-import { Component, Show } from "solid-js"
+import { Component, Show, createMemo } from "solid-js"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -11,6 +11,7 @@ import { DialogConnectProvider } from "./dialog-connect-provider"
 export const DialogSelectProvider: Component = () => {
   const dialog = useDialog()
   const providers = useProviders()
+  const providerItems = createMemo(() => providers.all().filter((provider) => provider.id !== "claude-agent"))
 
   return (
     <Dialog title="Connect provider">
@@ -18,7 +19,7 @@ export const DialogSelectProvider: Component = () => {
         search={{ placeholder: "Search providers", autofocus: true }}
         activeIcon="plus-small"
         key={(x) => x?.id}
-        items={providers.all}
+        items={providerItems}
         filterKeys={["id", "name"]}
         groupBy={(x) => (popularProviders.includes(x.id) ? "Popular" : "Other")}
         sortBy={(a, b) => {

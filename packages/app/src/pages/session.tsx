@@ -515,7 +515,17 @@ export default function Page() {
       category: "Model",
       keybind: "mod+'",
       slash: "model",
-      onSelect: () => dialog.show(() => <DialogSelectModel />),
+      onSelect: () => {
+        if (local.mode.current()?.id === "oh-my-opencode") {
+          showToast({
+            variant: "default",
+            title: "Default model",
+            description: "Model selection is managed by Oh My OpenCode.",
+          })
+          return
+        }
+        dialog.show(() => <DialogSelectModel />)
+      },
     },
     {
       id: "mcp.toggle",
@@ -550,6 +560,14 @@ export default function Page() {
       category: "Model",
       keybind: "shift+mod+t",
       onSelect: () => {
+        if (local.mode.current()?.id === "oh-my-opencode") {
+          showToast({
+            variant: "default",
+            title: "Default model",
+            description: "Thinking effort is managed by Oh My OpenCode.",
+          })
+          return
+        }
         local.model.variant.cycle()
         showToast({
           title: "Thinking effort changed",

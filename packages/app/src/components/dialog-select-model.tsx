@@ -20,6 +20,7 @@ const ModelList: Component<{
   const models = createMemo(() =>
     local.model
       .list()
+      .filter((m) => m.provider.id !== "claude-agent")
       .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
       .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
   )
@@ -87,6 +88,18 @@ export const ModelSelectorPopover: Component<{
 
 export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const dialog = useDialog()
+  const local = useLocal()
+  const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
+
+  if (isOhMyMode()) {
+    return (
+      <Dialog title="Select model" description="Managed by Oh My OpenCode">
+        <div class="px-3 pb-6 text-13-regular text-text-weak">
+          Model selection is managed by Oh My OpenCode. The current agent will use its configured default model.
+        </div>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog
