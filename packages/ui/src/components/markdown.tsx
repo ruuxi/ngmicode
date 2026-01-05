@@ -23,21 +23,6 @@ function setCachedMarkdown(text: string, html: string) {
   }
 }
 
-function escapeHtml(text: string) {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-function toPlainHtml(text: string) {
-  if (!text) return ""
-  const escaped = escapeHtml(text)
-  const paragraphs = escaped.split(/\n{2,}/)
-  return `<p>${paragraphs.map((p) => p.replace(/\n/g, "<br/>")).join("</p><p>")}</p>`
-}
 
 export function Markdown(
   props: ComponentProps<"div"> & {
@@ -48,7 +33,7 @@ export function Markdown(
 ) {
   const [local, others] = splitProps(props, ["text", "class", "classList"])
   const marked = useMarked()
-  const [html, setHtml] = createSignal<string | undefined>(getCachedMarkdown(local.text) ?? toPlainHtml(local.text))
+  const [html, setHtml] = createSignal<string | undefined>(getCachedMarkdown(local.text))
 
   createEffect(() => {
     const text = local.text

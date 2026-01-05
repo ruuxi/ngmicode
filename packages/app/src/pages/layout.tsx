@@ -27,7 +27,7 @@ import { Collapsible } from "@opencode-ai/ui/collapsible"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { Mark } from "@opencode-ai/ui/logo"
-import { getFilename } from "@opencode-ai/util/path"
+import { getFilename, truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { Session } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
@@ -597,7 +597,7 @@ export default function Layout(props: ParentProps) {
     const notification = useNotification()
     const notifications = createMemo(() => notification.project.unseen(props.project.worktree))
     const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
-    const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
+    const name = createMemo(() => props.project.name || truncateDirectoryPrefix(props.project.worktree))
     const mask = "radial-gradient(circle 5px at calc(100% - 2px) 2px, transparent 5px, black 5.5px)"
     const opencode = "4b0ea68d7af9a6031a7ffda7ad66e0cb83315750"
 
@@ -633,7 +633,7 @@ export default function Layout(props: ParentProps) {
   }
 
   const ProjectVisual = (props: { project: LocalProject; class?: string }): JSX.Element => {
-    const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
+    const name = createMemo(() => props.project.name || truncateDirectoryPrefix(props.project.worktree))
     const current = createMemo(() => base64Decode(params.dir ?? ""))
     return (
       <Switch>
@@ -783,7 +783,7 @@ export default function Layout(props: ParentProps) {
     const sortable = createSortable(props.project.worktree)
     const showExpanded = createMemo(() => props.mobile || layout.sidebar.opened())
     const slug = createMemo(() => base64Encode(props.project.worktree))
-    const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
+    const name = createMemo(() => props.project.name || truncateDirectoryPrefix(props.project.worktree))
     const [store, setProjectStore] = globalSync.child(props.project.worktree)
     const sessions = createMemo(() => store.session.toSorted(sortSessions))
     const rootSessions = createMemo(() => sessions().filter((s) => !s.parentID && !s.time?.archived))

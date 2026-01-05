@@ -48,7 +48,7 @@ import type { JSX } from "solid-js"
 import { useSync } from "@/context/sync"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
-import { getDirectory, getFilename } from "@opencode-ai/util/path"
+import { getDirectory, getFilename, truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import { Terminal } from "@/components/terminal"
 import { base64Decode, base64Encode, checksum } from "@opencode-ai/util/encode"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -123,9 +123,9 @@ function Header(props: { onMobileMenuToggle?: () => void }) {
                 options={layout.projects.list().map((project) => project.worktree)}
                 current={sync.directory}
                 label={(x) => {
-                  const name = getFilename(x)
+                  const truncated = truncateDirectoryPrefix(x)
                   const b = x === sync.directory ? branch() : undefined
-                  return b ? `${name}:${b}` : name
+                  return b ? `${truncated}:${b}` : truncated
                 }}
                 onSelect={(x) => (x ? navigateToProject(x) : undefined)}
                 class="text-14-regular text-text-base"
@@ -135,7 +135,7 @@ function Header(props: { onMobileMenuToggle?: () => void }) {
                 {(i) => (
                   <div class="flex items-center gap-2">
                     <Icon name="folder" size="small" />
-                    <div class="text-text-strong">{getFilename(i)}</div>
+                    <div class="text-text-strong">{truncateDirectoryPrefix(i ?? "")}</div>
                   </div>
                 )}
               </Select>

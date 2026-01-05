@@ -14,7 +14,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const sdk = useSDK()
     const child = createMemo(() => globalSync.child(sdk.directory))
     const store = createMemo(() => child()[0])
-    const setStore = (...args: any[]) => child()[1](...args)
+    const setStore = (...args: [any, ...any[]]) => (child()[1] as (...args: any[]) => void)(...args)
     const absolute = (path: string) => (store().path.directory + "/" + path).replace("//", "/")
     const [hasReady, setHasReady] = createSignal(false)
 
