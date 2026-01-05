@@ -16,6 +16,7 @@ export function PaneGrid(props: PaneGridProps) {
   const paneRefs = new Map<string, HTMLDivElement>()
   let previousRects = new Map<string, DOMRect>()
   let disposed = false
+  let resizeCleanup: (() => void) | null = null
 
   const layout = createMemo(() => multiPane.layout())
   const [paneIds, setPaneIds] = createSignal<string[]>([])
@@ -23,6 +24,7 @@ export function PaneGrid(props: PaneGridProps) {
 
   onCleanup(() => {
     disposed = true
+    resizeCleanup?.()
     paneRefs.clear()
     previousRects.clear()
   })
@@ -91,7 +93,7 @@ export function PaneGrid(props: PaneGridProps) {
               { opacity: 0, transform: "scale(0.95)" },
               { opacity: 1, transform: "scale(1)" },
             ],
-            { duration: FLIP_DURATION, easing: "ease-out", fill: "forwards" },
+            { duration: FLIP_DURATION, easing: "ease-out" },
           )
           continue
         }
@@ -128,29 +130,23 @@ export function PaneGrid(props: PaneGridProps) {
   const [colSizes, setColSizes] = createSignal<number[] | null>(null)
   const [rowSizes, setRowSizes] = createSignal<number[] | null>(null)
 
-  // Use percentages for animatable transitions
+  // Use fr units for proper gap handling
   const actualGridCols = createMemo(() => {
     const cols = layout().columns
     const sizes = colSizes()
     if (sizes && sizes.length === cols) {
-      const total = sizes.reduce((a, b) => a + b, 0)
-      return sizes.map((s) => `${(s / total) * 100}%`).join(" ")
+      return sizes.map((s) => `${s}fr`).join(" ")
     }
-    // Equal distribution
-    const pct = 100 / cols
-    return Array(cols).fill(`${pct}%`).join(" ")
+    return `repeat(${cols}, 1fr)`
   })
 
   const actualGridRows = createMemo(() => {
     const rows = layout().rows
     const sizes = rowSizes()
     if (sizes && sizes.length === rows) {
-      const total = sizes.reduce((a, b) => a + b, 0)
-      return sizes.map((s) => `${(s / total) * 100}%`).join(" ")
+      return sizes.map((s) => `${s}fr`).join(" ")
     }
-    // Equal distribution
-    const pct = 100 / rows
-    return Array(rows).fill(`${pct}%`).join(" ")
+    return `repeat(${rows}, 1fr)`
   })
 
   function handleResizeStart(type: "col" | "row", index: number, e: MouseEvent) {
@@ -223,13 +219,17 @@ export function PaneGrid(props: PaneGridProps) {
       }
     }
 
-    const onMouseUp = () => {
+    const cleanup = () => {
       document.body.style.userSelect = ""
       document.body.style.cursor = ""
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
+      resizeCleanup = null
     }
 
+    const onMouseUp = () => cleanup()
+
+    resizeCleanup = cleanup
     document.addEventListener("mousemove", onMouseMove)
     document.addEventListener("mouseup", onMouseUp)
   }
