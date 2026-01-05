@@ -814,6 +814,9 @@ export namespace Config {
       mergeDeep(await loadFile(path.join(Global.Path.config, "config.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
+      // Also check Tauri config dir (where oh-my-opencode installer writes for desktop)
+      mergeDeep(Global.Path.tauriConfig ? await loadFile(path.join(Global.Path.tauriConfig, "opencode.json")) : {}),
+      mergeDeep(Global.Path.tauriConfig ? await loadFile(path.join(Global.Path.tauriConfig, "opencode.jsonc")) : {}),
     )
 
     await import(path.join(Global.Path.config, "config"), {

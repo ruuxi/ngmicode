@@ -120,14 +120,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const missingPlugins = (target: ModeDefinition) => {
         const required = target.requiresPlugins ?? []
         if (required.length === 0) return []
+
+        // If sync isn't ready yet, don't report anything as missing (loading state)
+        if (!sync.ready) return []
+
         return required.filter((plugin) => {
-          // For oh-my-opencode, the definitive check is whether Sisyphus agent actually exists
-          // This is more reliable than checking if plugin is in config (which auto-install adds)
-          if (plugin === "oh-my-opencode") {
-            return !agentNames().has("Sisyphus")
-          }
-          // For other plugins, check if they're in the config
+          // Check if plugin is in the config (source of truth for plugin availability)
           if (installedPlugins().some((entry) => entry.includes(plugin))) return false
+          // Fallback: check if the plugin's agents exist (e.g., Sisyphus for oh-my-opencode)
+          if (plugin === "oh-my-opencode" && agentNames().has("Sisyphus")) return false
           return true
         })
       }
