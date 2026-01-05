@@ -153,10 +153,29 @@ export namespace SessionPrompt {
 
     const message = await createUserMessage(input)
 
-    // Trigger UserPromptSubmit hook
+    // Extract prompt text from parts for hook
+    const promptText = message.parts
+      .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+      .map((p) => p.text)
+      .join("\n")
+
+    // Trigger UserPromptSubmit hook (skipped for sub-sessions)
     await ClaudePlugin.Hooks.trigger("UserPromptSubmit", {
       sessionID: input.sessionID,
+      parentSessionId: session.parentID,
       messageID: message.info.id,
+      prompt: promptText,
+    })
+
+    // Mark first message processed for this session
+    if (ClaudePlugin.Hooks.isFirstMessage(input.sessionID)) {
+      ClaudePlugin.Hooks.markFirstMessageProcessed(input.sessionID)
+    }
+
+    // Record user message in transcript
+    await ClaudePlugin.Transcript.recordUserMessage({
+      sessionID: input.sessionID,
+      content: promptText,
     })
 
     await Session.touch(input.sessionID)
@@ -817,13 +836,34 @@ export namespace SessionPrompt {
               args,
             },
           )
-          // Trigger Claude plugin PreToolUse hook
-          await ClaudePlugin.Hooks.trigger("PreToolUse", {
+
+          // Trigger Claude plugin PreToolUse hook with toolUseId
+          const preToolResults = await ClaudePlugin.Hooks.trigger("PreToolUse", {
             sessionID: ctx.sessionID,
+            parentSessionId: input.session.parentID,
             messageID: ctx.messageID,
             toolName: item.id,
             toolArgs: args,
+            toolUseId: options.toolCallId,
           })
+
+          // Record tool use in transcript
+          await ClaudePlugin.Transcript.recordToolUse({
+            sessionID: ctx.sessionID,
+            toolName: item.id,
+            toolInput: args,
+            toolUseId: options.toolCallId,
+          })
+
+          // Handle hook decisions
+          for (const hookResult of preToolResults) {
+            if (hookResult.decision === "deny") {
+              throw new PermissionNext.RejectedError(hookResult.reason ?? "Hook denied tool execution")
+            }
+            if (hookResult.updatedInput) {
+              Object.assign(args, hookResult.updatedInput)
+            }
+          }
 
           try {
             const result = await item.execute(args, ctx)
@@ -837,13 +877,24 @@ export namespace SessionPrompt {
               },
               result,
             )
+
             // Trigger Claude plugin PostToolUse hook
             await ClaudePlugin.Hooks.trigger("PostToolUse", {
               sessionID: ctx.sessionID,
+              parentSessionId: input.session.parentID,
               messageID: ctx.messageID,
               toolName: item.id,
               toolArgs: args,
               toolResult: result,
+              toolUseId: options.toolCallId,
+            })
+
+            // Record tool result in transcript
+            await ClaudePlugin.Transcript.recordToolResult({
+              sessionID: ctx.sessionID,
+              toolName: item.id,
+              toolOutput: typeof result.output === "string" ? { output: result.output } : (result.output as Record<string, unknown>),
+              toolUseId: options.toolCallId,
             })
 
             return result
@@ -851,11 +902,23 @@ export namespace SessionPrompt {
             // Trigger Claude plugin PostToolUseFailure hook
             await ClaudePlugin.Hooks.trigger("PostToolUseFailure", {
               sessionID: ctx.sessionID,
+              parentSessionId: input.session.parentID,
               messageID: ctx.messageID,
               toolName: item.id,
               toolArgs: args,
               error: error instanceof Error ? error : new Error(String(error)),
+              toolUseId: options.toolCallId,
             })
+
+            // Record tool failure in transcript
+            await ClaudePlugin.Transcript.recordToolResult({
+              sessionID: ctx.sessionID,
+              toolName: item.id,
+              toolOutput: {},
+              toolUseId: options.toolCallId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+
             throw error
           }
         },
@@ -887,13 +950,34 @@ export namespace SessionPrompt {
             args,
           },
         )
-        // Trigger Claude plugin PreToolUse hook
-        await ClaudePlugin.Hooks.trigger("PreToolUse", {
+
+        // Trigger Claude plugin PreToolUse hook with toolUseId
+        const preToolResults = await ClaudePlugin.Hooks.trigger("PreToolUse", {
           sessionID: ctx.sessionID,
+          parentSessionId: input.session.parentID,
           messageID: ctx.messageID,
           toolName: key,
           toolArgs: args,
+          toolUseId: opts.toolCallId,
         })
+
+        // Record tool use in transcript
+        await ClaudePlugin.Transcript.recordToolUse({
+          sessionID: ctx.sessionID,
+          toolName: key,
+          toolInput: args,
+          toolUseId: opts.toolCallId,
+        })
+
+        // Handle hook decisions
+        for (const hookResult of preToolResults) {
+          if (hookResult.decision === "deny") {
+            throw new PermissionNext.RejectedError(hookResult.reason ?? "Hook denied tool execution")
+          }
+          if (hookResult.updatedInput) {
+            Object.assign(args, hookResult.updatedInput)
+          }
+        }
 
         await ctx.ask({
           permission: key,
@@ -914,13 +998,16 @@ export namespace SessionPrompt {
             },
             result,
           )
+
           // Trigger Claude plugin PostToolUse hook
           await ClaudePlugin.Hooks.trigger("PostToolUse", {
             sessionID: ctx.sessionID,
+            parentSessionId: input.session.parentID,
             messageID: ctx.messageID,
             toolName: key,
             toolArgs: args,
             toolResult: result,
+            toolUseId: opts.toolCallId,
           })
 
           const textParts: string[] = []
@@ -942,22 +1029,44 @@ export namespace SessionPrompt {
             // Add support for other types if needed
           }
 
-          return {
+          const toolOutput = {
             title: "",
             metadata: result.metadata ?? {},
             output: textParts.join("\n\n"),
             attachments,
             content: result.content, // directly return content to preserve ordering when outputting to model
           }
+
+          // Record tool result in transcript
+          await ClaudePlugin.Transcript.recordToolResult({
+            sessionID: ctx.sessionID,
+            toolName: key,
+            toolOutput: { output: toolOutput.output },
+            toolUseId: opts.toolCallId,
+          })
+
+          return toolOutput
         } catch (error) {
           // Trigger Claude plugin PostToolUseFailure hook
           await ClaudePlugin.Hooks.trigger("PostToolUseFailure", {
             sessionID: ctx.sessionID,
+            parentSessionId: input.session.parentID,
             messageID: ctx.messageID,
             toolName: key,
             toolArgs: args,
             error: error instanceof Error ? error : new Error(String(error)),
+            toolUseId: opts.toolCallId,
           })
+
+          // Record tool failure in transcript
+          await ClaudePlugin.Transcript.recordToolResult({
+            sessionID: ctx.sessionID,
+            toolName: key,
+            toolOutput: {},
+            toolUseId: opts.toolCallId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+
           throw error
         }
       }

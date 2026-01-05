@@ -3,23 +3,29 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
+import { ClaudePluginConfig } from "./config"
 import { ClaudePluginDiscovery } from "./discovery"
 import { ClaudePluginHooks } from "./hooks"
 import { ClaudePluginLoader } from "./loader"
 import { ClaudePluginMarketplace } from "./marketplace"
 import { ClaudePluginSchema } from "./schema"
 import { ClaudePluginStorage } from "./storage"
+import { ClaudePluginTransform } from "./transform"
+import { ClaudePluginTranscript } from "./transcript"
 
 export namespace ClaudePlugin {
   const log = Log.create({ service: "claude-plugin" })
 
   // Re-export submodules
   export const Schema = ClaudePluginSchema
+  export const Config = ClaudePluginConfig
   export const Discovery = ClaudePluginDiscovery
   export const Storage = ClaudePluginStorage
   export const Loader = ClaudePluginLoader
   export const Marketplace = ClaudePluginMarketplace
   export const Hooks = ClaudePluginHooks
+  export const Transform = ClaudePluginTransform
+  export const Transcript = ClaudePluginTranscript
 
   // Bus events
   export const Event = {
@@ -55,8 +61,8 @@ export namespace ClaudePlugin {
     async () => {
       const plugins = new Map<string, ClaudePluginLoader.LoadedPlugin>()
 
-      // Discover local plugins
-      const discovered = await ClaudePluginDiscovery.discoverLocal()
+      // Discover all plugins (local + Claude database, with Claude database taking precedence)
+      const discovered = await ClaudePluginDiscovery.discoverAll()
 
       // Load enabled plugins
       for (const disc of discovered) {
@@ -73,7 +79,7 @@ export namespace ClaudePlugin {
           }
         }
 
-        // Save to storage if new
+        // Save to storage if new (claude-database source maps to "local" for storage purposes)
         if (!stored) {
           await ClaudePluginStorage.save({
             id: disc.id,

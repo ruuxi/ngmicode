@@ -47,6 +47,141 @@ export namespace ClaudePluginSchema {
 
   export type HookEvent = z.infer<typeof HookEvent>
 
+  // Permission modes for hooks
+  export const PermissionMode = z.enum(["default", "plan", "bypassPermissions"])
+  export type PermissionMode = z.infer<typeof PermissionMode>
+
+  // Permission decision types
+  export const PermissionDecision = z.enum(["allow", "deny", "ask"])
+  export type PermissionDecision = z.infer<typeof PermissionDecision>
+
+  // Base hook input fields (common to all hooks)
+  const HookInputBase = z.object({
+    session_id: z.string(),
+    cwd: z.string(),
+    permission_mode: PermissionMode.optional(),
+    hook_source: z.literal("opencode-plugin"),
+  })
+
+  // PreToolUse input sent via stdin
+  export const PreToolUseInput = HookInputBase.extend({
+    hook_event_name: z.literal("PreToolUse"),
+    transcript_path: z.string(),
+    tool_name: z.string(), // PascalCase
+    tool_input: z.record(z.string(), z.unknown()), // snake_case keys
+    tool_use_id: z.string(),
+  }).meta({ ref: "ClaudePluginPreToolUseInput" })
+  export type PreToolUseInput = z.infer<typeof PreToolUseInput>
+
+  // PostToolUse input sent via stdin
+  export const PostToolUseInput = HookInputBase.extend({
+    hook_event_name: z.literal("PostToolUse"),
+    transcript_path: z.string(),
+    tool_name: z.string(),
+    tool_input: z.record(z.string(), z.unknown()),
+    tool_result: z.unknown(),
+    tool_use_id: z.string(),
+  }).meta({ ref: "ClaudePluginPostToolUseInput" })
+  export type PostToolUseInput = z.infer<typeof PostToolUseInput>
+
+  // PostToolUseFailure input sent via stdin
+  export const PostToolUseFailureInput = HookInputBase.extend({
+    hook_event_name: z.literal("PostToolUseFailure"),
+    transcript_path: z.string(),
+    tool_name: z.string(),
+    tool_input: z.record(z.string(), z.unknown()),
+    error: z.string(),
+    tool_use_id: z.string(),
+  }).meta({ ref: "ClaudePluginPostToolUseFailureInput" })
+  export type PostToolUseFailureInput = z.infer<typeof PostToolUseFailureInput>
+
+  // UserPromptSubmit input sent via stdin
+  export const UserPromptSubmitInput = HookInputBase.extend({
+    hook_event_name: z.literal("UserPromptSubmit"),
+    prompt: z.string(),
+  }).meta({ ref: "ClaudePluginUserPromptSubmitInput" })
+  export type UserPromptSubmitInput = z.infer<typeof UserPromptSubmitInput>
+
+  // Stop input sent via stdin
+  export const StopInput = HookInputBase.extend({
+    hook_event_name: z.literal("Stop"),
+    stop_hook_active: z.boolean(),
+  }).meta({ ref: "ClaudePluginStopInput" })
+  export type StopInput = z.infer<typeof StopInput>
+
+  // PreCompact input sent via stdin
+  export const PreCompactInput = HookInputBase.extend({
+    hook_event_name: z.literal("PreCompact"),
+  }).meta({ ref: "ClaudePluginPreCompactInput" })
+  export type PreCompactInput = z.infer<typeof PreCompactInput>
+
+  // Session input sent via stdin
+  export const SessionInput = HookInputBase.extend({
+    hook_event_name: z.enum(["SessionStart", "SessionEnd"]),
+  }).meta({ ref: "ClaudePluginSessionInput" })
+  export type SessionInput = z.infer<typeof SessionInput>
+
+  // PermissionRequest input sent via stdin
+  export const PermissionRequestInput = HookInputBase.extend({
+    hook_event_name: z.literal("PermissionRequest"),
+    permission: z.string(),
+    patterns: z.array(z.string()),
+  }).meta({ ref: "ClaudePluginPermissionRequestInput" })
+  export type PermissionRequestInput = z.infer<typeof PermissionRequestInput>
+
+  // Hook-specific output for PreToolUse
+  export const PreToolUseHookOutput = z.object({
+    hookEventName: z.literal("PreToolUse"),
+    permissionDecision: PermissionDecision,
+    permissionDecisionReason: z.string().optional(),
+    updatedInput: z.record(z.string(), z.unknown()).optional(),
+  })
+  export type PreToolUseHookOutput = z.infer<typeof PreToolUseHookOutput>
+
+  // Hook-specific output for PostToolUse
+  export const PostToolUseHookOutput = z.object({
+    hookEventName: z.literal("PostToolUse"),
+    additionalContext: z.string().optional(),
+  })
+  export type PostToolUseHookOutput = z.infer<typeof PostToolUseHookOutput>
+
+  // Hook-specific output for PreCompact
+  export const PreCompactHookOutput = z.object({
+    hookEventName: z.literal("PreCompact"),
+    additionalContext: z.array(z.string()).optional(),
+  })
+  export type PreCompactHookOutput = z.infer<typeof PreCompactHookOutput>
+
+  // Hook-specific output for Stop
+  export const StopHookOutput = z.object({
+    hookEventName: z.literal("Stop"),
+    inject_prompt: z.string().optional(),
+  })
+  export type StopHookOutput = z.infer<typeof StopHookOutput>
+
+  // Common hook output fields
+  export const HookOutputBase = z.object({
+    continue: z.boolean().optional(),
+    stopReason: z.string().optional(),
+    suppressOutput: z.boolean().optional(),
+    systemMessage: z.string().optional(),
+  })
+
+  // General hook output format (parsed from stdout)
+  export const HookOutput = HookOutputBase.extend({
+    // Legacy decision fields (backward compat)
+    decision: z.enum(["allow", "deny", "approve", "block", "ask"]).optional(),
+    reason: z.string().optional(),
+    // Hook-specific output (preferred)
+    hookSpecificOutput: z.union([
+      PreToolUseHookOutput,
+      PostToolUseHookOutput,
+      PreCompactHookOutput,
+      StopHookOutput,
+    ]).optional(),
+  }).meta({ ref: "ClaudePluginHookOutput" })
+  export type HookOutput = z.infer<typeof HookOutput>
+
   // Hook types
   export const HookType = z.enum(["command", "prompt", "agent"])
 
