@@ -377,6 +377,17 @@ export default function Page() {
   let inputRef!: HTMLDivElement
 
   createEffect(() => {
+    if (!params.id) return
+    sync.session.sync(params.id).catch((err) => {
+      console.error("Failed to sync session:", params.id, err)
+      // If session not found, navigate to new session page
+      if (err?.name === "NotFoundError") {
+        navigate(`/${params.dir}/session`, { replace: true })
+      }
+    })
+  })
+
+  createEffect(() => {
     if (layout.terminal.opened()) {
       if (terminal.all().length === 0) {
         terminal.new()

@@ -67,8 +67,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const [session, messages, todo, diff] = await Promise.all([
             retry(() => sdk.client.session.get({ sessionID })),
             retry(() => sdk.client.session.messages({ sessionID, limit: 1000 })),
-            retry(() => sdk.client.session.todo({ sessionID })),
-            retry(() => sdk.client.session.diff({ sessionID })),
+            retry(() => sdk.client.session.todo({ sessionID })).catch(() => ({ data: [] })),
+            retry(() => sdk.client.session.diff({ sessionID })).catch(() => ({ data: [] })),
           ])
 
           batch(() => {

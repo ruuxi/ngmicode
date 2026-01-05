@@ -196,6 +196,14 @@ function PaneContent(props: ActivePaneProps) {
   const status = createMemo(() => (props.sessionId ? sync.data.session_status[props.sessionId] : undefined))
   const isWorking = createMemo(() => status()?.type === "busy")
 
+  // Sync session data when sessionId changes
+  createEffect(() => {
+    if (!props.sessionId) return
+    sync.session.sync(props.sessionId).catch((err) => {
+      console.error("Failed to sync session:", props.sessionId, err)
+    })
+  })
+
   function setActiveMessage(message: UserMessage) {
     setStore("messageId", message.id)
   }
