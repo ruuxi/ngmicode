@@ -1580,14 +1580,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             classList={{
                               "bg-surface-base-hover": local.agent.current()?.name === agent.name,
                             }}
-                          >
-                            <span class="capitalize text-13-medium text-text-strong">{agent.name}</span>
-                            <Show when={agent.description}>
-                              <span class="text-12-regular text-text-weak">{agent.description}</span>
-                            </Show>
-                          </DropdownMenu.Item>
-                        )}
-                      </For>
+                            >
+                              <span class="capitalize text-13-medium text-text-strong">{agent.name}</span>
+                              <Show when={agent.description}>
+                                <Tooltip placement="right" value={agent.description}>
+                                  <span class="text-12-regular text-text-weak truncate max-w-48">{agent.description}</span>
+                                </Tooltip>
+                              </Show>
+                            </DropdownMenu.Item>
+                          )}
+                        </For>
                       <DropdownMenu.Separator class="my-1 h-px bg-border-base" />
                       <div class="px-2 py-1 text-11-regular text-text-subtle">
                         Press Tab to cycle
