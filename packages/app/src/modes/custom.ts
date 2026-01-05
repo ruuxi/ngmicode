@@ -3,7 +3,7 @@ import type { ModeDefinition } from "./types"
 
 export function saveCustomMode(_mode: ModeDefinition) {
   showToast({
-    variant: "info",
+    variant: "default",
     title: "Custom modes coming soon",
     description: "Custom mode creation will be available in a future update.",
   })
@@ -11,7 +11,7 @@ export function saveCustomMode(_mode: ModeDefinition) {
 
 export function deleteCustomMode(_modeId: string) {
   showToast({
-    variant: "info",
+    variant: "default",
     title: "Custom modes coming soon",
     description: "Custom mode deletion will be available in a future update.",
   })
