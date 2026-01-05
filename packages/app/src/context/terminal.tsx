@@ -1,4 +1,4 @@
-import { createStore, produce } from "solid-js/store"
+import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
@@ -22,9 +22,17 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   init: (props) => createTerminalContext(props?.paneId),
 })
 
-type TerminalStore = {
+type TerminalEntry = {
   active?: string
   all: LocalPTY[]
+}
+
+type TerminalStore = {
+  entries: Record<string, TerminalEntry>
+}
+
+function createDefaultEntry(): TerminalEntry {
+  return { all: [] }
 }
 
 function createTerminalContext(paneId?: string) {
@@ -37,48 +45,74 @@ function createTerminalContext(paneId?: string) {
     return createNonPersistedTerminalContext(sdk)
   }
 
-  const name = `${params.dir}/terminal${params.id ? "/" + params.id : ""}.v1`
-  const [store, setStore, _, ready] = persisted(name, createStore<TerminalStore>({ all: [] }))
+  const key = createMemo(() => `${params.dir}/terminal${params.id ? "/" + params.id : ""}.v1`)
+  const [store, setStore, _, ready] = persisted(
+    "terminal.v2",
+    createStore<TerminalStore>({
+      entries: {},
+    }),
+  )
 
-  return createTerminalMethods(sdk, store, setStore, ready)
+  const currentEntry = createMemo(() => store.entries[key()] ?? createDefaultEntry())
+  const updateEntry = (updater: (entry: TerminalEntry) => TerminalEntry, targetKey?: string) => {
+    const keyToUse = targetKey ?? key()
+    const base = store.entries[keyToUse] ?? createDefaultEntry()
+    setStore("entries", keyToUse, updater(base))
+  }
+
+  return createTerminalMethods(sdk, () => currentEntry(), updateEntry, ready, () => key())
 }
 
 function createNonPersistedTerminalContext(sdk: ReturnType<typeof useSDK>) {
-  const [store, setStore] = createStore<TerminalStore>({ all: [] })
-  return createTerminalMethods(sdk, store, setStore, () => true)
+  const [store, setStore] = createStore<TerminalEntry>(createDefaultEntry())
+  const updateEntry = (updater: (entry: TerminalEntry) => TerminalEntry) => {
+    setStore(updater(store))
+  }
+  return createTerminalMethods(sdk, () => store, updateEntry, () => true, () => "")
 }
 
 function createTerminalMethods(
   sdk: ReturnType<typeof useSDK>,
-  store: TerminalStore,
-  setStore: import("solid-js/store").SetStoreFunction<TerminalStore>,
+  getEntry: () => TerminalEntry,
+  updateEntry: (updater: (entry: TerminalEntry) => TerminalEntry, targetKey?: string) => void,
   ready: () => boolean,
+  getKey: () => string,
 ) {
   return {
     ready,
-    all: createMemo(() => Object.values(store.all)),
-    active: createMemo(() => store.active),
+    all: createMemo(() => getEntry().all),
+    active: createMemo(() => getEntry().active),
     new() {
+      const targetKey = getKey()
       sdk.client.pty
-        .create({ title: `Terminal ${store.all.length + 1}` })
+        .create({ title: `Terminal ${getEntry().all.length + 1}` })
         .then((pty) => {
           const id = pty.data?.id
           if (!id) return
-          setStore("all", [
-            ...store.all,
-            {
-              id,
-              title: pty.data?.title ?? "Terminal",
-            },
-          ])
-          setStore("active", id)
+          updateEntry(
+            (entry) => ({
+              ...entry,
+              all: [
+                ...entry.all,
+                {
+                  id,
+                  title: pty.data?.title ?? "Terminal",
+                },
+              ],
+              active: id,
+            }),
+            targetKey,
+          )
         })
         .catch((e) => {
           console.error("Failed to create terminal", e)
         })
     },
     update(pty: Partial<LocalPTY> & { id: string }) {
-      setStore("all", (x) => x.map((x) => (x.id === pty.id ? { ...x, ...pty } : x)))
+      updateEntry((entry) => ({
+        ...entry,
+        all: entry.all.map((x) => (x.id === pty.id ? { ...x, ...pty } : x)),
+      }))
       sdk.client.pty
         .update({
           ptyID: pty.id,
@@ -90,8 +124,10 @@ function createTerminalMethods(
         })
     },
     async clone(id: string) {
-      const index = store.all.findIndex((x) => x.id === id)
-      const pty = store.all[index]
+      const targetKey = getKey()
+      const entry = getEntry()
+      const index = entry.all.findIndex((x) => x.id === id)
+      const pty = entry.all[index]
       if (!pty) return
       const clone = await sdk.client.pty
         .create({
@@ -102,42 +138,59 @@ function createTerminalMethods(
           return undefined
         })
       if (!clone?.data) return
-      setStore("all", index, {
-        ...pty,
-        ...clone.data,
-      })
-      if (store.active === pty.id) {
-        setStore("active", clone.data.id)
-      }
+      updateEntry(
+        (entry) => {
+          const nextAll = entry.all.slice()
+          nextAll[index] = {
+            ...pty,
+            ...clone.data,
+          }
+          return {
+            ...entry,
+            all: nextAll,
+            active: entry.active === pty.id ? clone.data.id : entry.active,
+          }
+        },
+        targetKey,
+      )
     },
     open(id: string) {
-      setStore("active", id)
+      updateEntry((entry) => ({ ...entry, active: id }))
     },
     async close(id: string) {
       batch(() => {
-        setStore(
-          "all",
-          store.all.filter((x) => x.id !== id),
-        )
-        if (store.active === id) {
-          const index = store.all.findIndex((f) => f.id === id)
-          const previous = store.all[Math.max(0, index - 1)]
-          setStore("active", previous?.id)
-        }
+        updateEntry((entry) => {
+          const nextAll = entry.all.filter((x) => x.id !== id)
+          let nextActive = entry.active
+          if (entry.active === id) {
+            const index = entry.all.findIndex((f) => f.id === id)
+            const previous = entry.all[Math.max(0, index - 1)]
+            nextActive = previous?.id
+          }
+          return {
+            ...entry,
+            all: nextAll,
+            active: nextActive,
+          }
+        })
       })
       await sdk.client.pty.remove({ ptyID: id }).catch((e) => {
         console.error("Failed to close terminal", e)
       })
     },
     move(id: string, to: number) {
-      const index = store.all.findIndex((f) => f.id === id)
-      if (index === -1) return
-      setStore(
-        "all",
-        produce((all) => {
-          all.splice(to, 0, all.splice(index, 1)[0])
-        }),
-      )
+      updateEntry((entry) => {
+        const index = entry.all.findIndex((f) => f.id === id)
+        if (index === -1) return entry
+        const clamped = Math.max(0, Math.min(to, entry.all.length - 1))
+        if (clamped === index) return entry
+        const nextAll = entry.all.slice()
+        nextAll.splice(clamped, 0, nextAll.splice(index, 1)[0])
+        return {
+          ...entry,
+          all: nextAll,
+        }
+      })
     },
   }
 }

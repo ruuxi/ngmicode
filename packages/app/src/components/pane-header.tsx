@@ -7,7 +7,7 @@ import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useMultiPane } from "@/context/multi-pane"
 import { paneCache } from "@/pages/multi-pane"
-import { getFilename } from "@opencode-ai/util/path"
+import { getFilename, truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import type { Session } from "@opencode-ai/sdk/v2/client"
 
 type PaneHeaderProps = {
@@ -64,9 +64,9 @@ export function PaneHeader(props: PaneHeaderProps) {
             options={layout.projects.list().map((project) => project.worktree)}
             current={props.directory}
             label={(x) => {
-              const name = getFilename(x)
+              const truncated = truncateDirectoryPrefix(x)
               const b = x === sync.directory ? branch() : undefined
-              return b ? `${name}:${b}` : name
+              return b ? `${truncated}:${b}` : truncated
             }}
             onSelect={handleDirectorySelect}
             class="text-12-regular text-text-base"

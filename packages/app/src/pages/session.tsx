@@ -7,7 +7,6 @@ import {
   Switch,
   createResource,
   createMemo,
-  createSignal,
   createEffect,
   on,
   createRenderEffect,
@@ -24,7 +23,6 @@ import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
-import { Spinner } from "@opencode-ai/ui/spinner"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
@@ -52,7 +50,7 @@ import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { Terminal } from "@/components/terminal"
-import { checksum } from "@opencode-ai/util/encode"
+import { base64Decode, base64Encode, checksum } from "@opencode-ai/util/encode"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectFile } from "@/components/dialog-select-file"
 import { DialogSelectModel } from "@/components/dialog-select-model"
@@ -75,7 +73,6 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { Popover } from "@opencode-ai/ui/popover"
 import { Select } from "@opencode-ai/ui/select"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { base64Encode } from "@opencode-ai/util/encode"
 import { iife } from "@opencode-ai/util/iife"
 import { AssistantMessage, Session, type Message, type Part } from "@opencode-ai/sdk/v2/client"
 
@@ -299,6 +296,8 @@ export default function Page() {
   const navigate = useNavigate()
   const sdk = useSDK()
   const prompt = usePrompt()
+  const expectedDirectory = createMemo(() => (params.dir ? base64Decode(params.dir) : ""))
+  const sdkDirectoryMatches = createMemo(() => expectedDirectory() !== "" && sdk.directory === expectedDirectory())
 
   const permission = usePermission()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
@@ -306,9 +305,6 @@ export default function Page() {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
-  const [syncingSessionId, setSyncingSessionId] = createSignal<string | undefined>(undefined)
-  const sessionSyncing = createMemo(() => syncingSessionId() === params.id)
-  const showSessionLoading = createMemo(() => !!params.id && sessionSyncing() && messages().length === 0)
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () => messages().filter((m) => m.role === "user") as UserMessage[],
@@ -383,20 +379,16 @@ export default function Page() {
 
   createEffect(() => {
     if (!params.id) {
-      setSyncingSessionId(undefined)
+      return
+    }
+    if (!sdkDirectoryMatches()) {
       return
     }
     const sessionId = params.id
     let active = true
-    setSyncingSessionId(sessionId)
     sync.session.sync(sessionId).then(() => {
-      if (active && params.id === sessionId) {
-        setSyncingSessionId(undefined)
-      }
+      if (!active || params.id !== sessionId) return
     }).catch((err) => {
-      if (active && params.id === sessionId) {
-        setSyncingSessionId(undefined)
-      }
       console.error("Failed to sync session:", sessionId, err)
       // If session not found, navigate to new session page
       if (err?.name === "NotFoundError") {
@@ -857,15 +849,6 @@ export default function Page() {
     onUserInteracted: () => setStore("userInteracted", true),
   })
 
-  const SessionLoading = (props: { class?: string }) => (
-    <Show when={showSessionLoading()}>
-      <div class={`flex items-center justify-center text-12-regular text-text-weak ${props.class ?? ""}`}>
-        <Spinner class="size-4 mr-2" />
-        <span>Loading session...</span>
-      </div>
-    </Show>
-  )
-
   const MobileTurns = () => (
     <div
       ref={mobileAutoScroll.scrollRef}
@@ -892,7 +875,6 @@ export default function Page() {
             />
           )}
         </For>
-        <SessionLoading class="py-6 w-full" />
       </div>
     </div>
   )
@@ -933,7 +915,6 @@ export default function Page() {
             onMessageSelect={setActiveMessage}
             wide={!showTabs()}
           />
-          <SessionLoading class="flex-1 min-w-0 h-full pb-20" />
           <Show when={activeMessage()}>
             <SessionTurn
               sessionID={params.id!}

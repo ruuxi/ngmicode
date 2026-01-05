@@ -88,9 +88,20 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext<
   init: (props) => createPromptContext(props?.paneId),
 })
 
-type PromptStore = {
+type PromptEntry = {
   prompt: Prompt
   cursor?: number
+}
+
+type PromptStore = {
+  entries: Record<string, PromptEntry>
+}
+
+function createDefaultEntry(): PromptEntry {
+  return {
+    prompt: clonePrompt(DEFAULT_PROMPT),
+    cursor: undefined,
+  }
 }
 
 function createPromptContext(paneId?: string) {
@@ -102,47 +113,58 @@ function createPromptContext(paneId?: string) {
     return createNonPersistedPromptContext()
   }
 
-  const name = `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`
+  const key = createMemo(() => `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`)
   const [store, setStore, _, ready] = persisted(
-    name,
+    "prompt.v2",
     createStore<PromptStore>({
-      prompt: clonePrompt(DEFAULT_PROMPT),
-      cursor: undefined,
+      entries: {},
     }),
   )
 
-  return createPromptMethods(store, setStore, ready)
+  const currentEntry = createMemo(() => store.entries[key()] ?? createDefaultEntry())
+  const updateEntry = (updater: (entry: PromptEntry) => PromptEntry) => {
+    const next = updater(currentEntry())
+    setStore("entries", key(), next)
+  }
+
+  return createPromptMethods(() => currentEntry(), updateEntry, ready)
 }
 
 function createNonPersistedPromptContext() {
-  const [store, setStore] = createStore<PromptStore>({
-    prompt: clonePrompt(DEFAULT_PROMPT),
-    cursor: undefined,
-  })
-  return createPromptMethods(store, setStore, () => true)
+  const [store, setStore] = createStore<PromptEntry>(createDefaultEntry())
+  const updateEntry = (updater: (entry: PromptEntry) => PromptEntry) => {
+    setStore(updater(store))
+  }
+  return createPromptMethods(() => store, updateEntry, () => true)
 }
 
 function createPromptMethods(
-  store: PromptStore,
-  setStore: import("solid-js/store").SetStoreFunction<PromptStore>,
+  getEntry: () => PromptEntry,
+  updateEntry: (updater: (entry: PromptEntry) => PromptEntry) => void,
   ready: () => boolean,
 ) {
+  const currentEntry = createMemo(() => getEntry())
+  const currentPrompt = createMemo(() => currentEntry().prompt)
   return {
     ready,
-    current: createMemo(() => store.prompt),
-    cursor: createMemo(() => store.cursor),
-    dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
+    current: createMemo(() => currentPrompt()),
+    cursor: createMemo(() => currentEntry().cursor),
+    dirty: createMemo(() => !isPromptEqual(currentPrompt(), DEFAULT_PROMPT)),
     set(prompt: Prompt, cursorPosition?: number) {
       const next = clonePrompt(prompt)
       batch(() => {
-        setStore("prompt", next)
-        if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
+        updateEntry((entry) => ({
+          prompt: next,
+          cursor: cursorPosition !== undefined ? cursorPosition : entry.cursor,
+        }))
       })
     },
     reset() {
       batch(() => {
-        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
-        setStore("cursor", 0)
+        updateEntry(() => ({
+          prompt: clonePrompt(DEFAULT_PROMPT),
+          cursor: 0,
+        }))
       })
     },
   }

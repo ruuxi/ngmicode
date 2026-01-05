@@ -18,7 +18,6 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
-import { Spinner } from "@opencode-ai/ui/spinner"
 import { DateTime } from "luxon"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 
@@ -153,7 +152,6 @@ function PaneContent(props: ActivePaneProps) {
     messageId: undefined as string | undefined,
     stepsExpanded: false,
   })
-  const [syncingSessionId, setSyncingSessionId] = createSignal<string | undefined>(undefined)
 
   // Header overlay visibility state
   const [isHovering, setIsHovering] = createSignal(false)
@@ -181,8 +179,6 @@ function PaneContent(props: ActivePaneProps) {
   }
 
   const messages = createMemo(() => (props.sessionId ? (sync.data.message[props.sessionId] ?? []) : []))
-  const sessionSyncing = createMemo(() => syncingSessionId() === props.sessionId)
-  const showSessionLoading = createMemo(() => !!props.sessionId && sessionSyncing() && messages().length === 0)
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () => messages().filter((m) => m.role === "user") as UserMessage[],
@@ -203,20 +199,13 @@ function PaneContent(props: ActivePaneProps) {
   // Sync session data when sessionId changes
   createEffect(() => {
     if (!props.sessionId) {
-      setSyncingSessionId(undefined)
       return
     }
     const sessionId = props.sessionId
     let active = true
-    setSyncingSessionId(sessionId)
     sync.session.sync(sessionId).then(() => {
-      if (active && props.sessionId === sessionId) {
-        setSyncingSessionId(undefined)
-      }
+      if (!active || props.sessionId !== sessionId) return
     }).catch((err) => {
-      if (active && props.sessionId === sessionId) {
-        setSyncingSessionId(undefined)
-      }
       console.error("Failed to sync session:", sessionId, err)
     })
     onCleanup(() => {
@@ -266,15 +255,6 @@ function PaneContent(props: ActivePaneProps) {
   function handleClose() {
     multiPane.removePane(props.paneId)
   }
-
-  const SessionLoading = (props: { class?: string }) => (
-    <Show when={showSessionLoading()}>
-      <div class={`flex items-center justify-center text-12-regular text-text-weak ${props.class ?? ""}`}>
-        <Spinner class="size-4 mr-2" />
-        <span>Loading session...</span>
-      </div>
-    </Show>
-  )
 
   return (
     <div
@@ -349,7 +329,6 @@ function PaneContent(props: ActivePaneProps) {
                 onMessageSelect={setActiveMessage}
                 wide={true}
               />
-              <SessionLoading class="flex-1 min-w-0 h-full pb-4" />
               <Show when={activeMessage()}>
                 <SessionTurn
                   sessionID={props.sessionId!}
@@ -363,7 +342,7 @@ function PaneContent(props: ActivePaneProps) {
                   classes={{
                     root: "pb-4 flex-1 min-w-0",
                     content: "pb-4 pt-8",
-                    container: "w-full pr-3 pl-5 " + (visibleUserMessages().length > 1 ? "pl-14" : ""),
+                    container: "w-full px-3 " + (visibleUserMessages().length > 1 ? "pl-14" : ""),
                   }}
                 />
               </Show>

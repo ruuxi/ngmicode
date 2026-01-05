@@ -1,4 +1,4 @@
-import { Show, createMemo, onMount, createEffect, on, For, onCleanup } from "solid-js"
+import { Show, createMemo, onMount, createEffect, on, For, onCleanup, createSignal } from "solid-js"
 import { useSearchParams, useNavigate } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
@@ -206,6 +206,9 @@ function MultiPaneContent() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Track when we're transitioning to single-pane view to prevent GlobalPromptWrapper remount
+  const [isTransitioningToSingle, setIsTransitioningToSingle] = createSignal(false)
+
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
   const hasPanes = createMemo(() => multiPane.panes().length > 0)
 
@@ -272,6 +275,9 @@ function MultiPaneContent() {
       (panes, prev) => {
         // Only switch if we're reducing from multiple panes to 1
         if (prev && prev.length > 1 && panes.length === 1 && panes[0].directory && panes[0].sessionId) {
+          // Mark transition to prevent GlobalPromptWrapper from remounting
+          // This avoids floating-ui errors when refs are invalidated during cleanup
+          setIsTransitioningToSingle(true)
           navigate(`/${base64Encode(panes[0].directory)}/session/${panes[0].sessionId}`)
         }
       },
@@ -306,7 +312,10 @@ function MultiPaneContent() {
             <SessionPane paneId={pane.id} directory={pane.directory} sessionId={pane.sessionId} />
           )}
         />
-        <GlobalPromptWrapper />
+        {/* Hide GlobalPromptWrapper during transition to prevent floating-ui errors */}
+        <Show when={!isTransitioningToSingle()}>
+          <GlobalPromptWrapper />
+        </Show>
       </Show>
     </div>
   )

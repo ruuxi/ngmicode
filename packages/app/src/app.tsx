@@ -92,14 +92,12 @@ export function App() {
                               <Route path="/" component={() => <Navigate href="session" />} />
                               <Route
                                 path="/session/:id?"
-                                component={(p) => (
-                                  <Show when={p.params.id ?? "new"} keyed>
-                                    <TerminalProvider>
-                                      <PromptProvider>
-                                        <Session />
-                                      </PromptProvider>
-                                    </TerminalProvider>
-                                  </Show>
+                                component={() => (
+                                  <TerminalProvider>
+                                    <PromptProvider>
+                                      <Session />
+                                    </PromptProvider>
+                                  </TerminalProvider>
                                 )}
                               />
                             </Route>
