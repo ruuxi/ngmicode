@@ -1,31 +1,135 @@
-import { Show, createMemo, createEffect, on, For, createSignal } from "solid-js"
+import { Show, createMemo, createEffect, on, For } from "solid-js"
 import { createStore } from "solid-js/store"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
-import { DataProvider } from "@opencode-ai/ui/context"
-import { TerminalProvider, useTerminal, type LocalPTY } from "@/context/terminal"
+import { DataProvider, useDialog } from "@opencode-ai/ui/context"
+import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { useMultiPane } from "@/context/multi-pane"
 import { useLayout } from "@/context/layout"
+import { useGlobalSync } from "@/context/global-sync"
+import { usePlatform } from "@/context/platform"
+import { useServer } from "@/context/server"
 import { PaneHeader } from "./pane-header"
 import { PaneHome } from "./pane-home"
-import { PromptInput } from "./prompt-input"
-import { Terminal } from "./terminal"
-import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
-import { Tabs } from "@opencode-ai/ui/tabs"
+import { DialogSelectDirectory } from "./dialog-select-directory"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { Button } from "@opencode-ai/ui/button"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
+import { DateTime } from "luxon"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
-
-const MAX_PANE_TERMINAL_HEIGHT = 200
 
 type SessionPaneProps = {
   paneId: string
   directory?: string
   sessionId?: string
+}
+
+// Component to show recent projects when no session is active
+function NewSessionProjectList(props: { currentDirectory: string; onSelectProject: (dir: string) => void }) {
+  const globalSync = useGlobalSync()
+  const layout = useLayout()
+  const platform = usePlatform()
+  const dialog = useDialog()
+  const server = useServer()
+  const homedir = createMemo(() => globalSync.data.path.home)
+
+  // Get recent projects, ensuring current directory is always included
+  const projects = createMemo(() => {
+    const sorted = globalSync.data.project
+      .toSorted((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
+
+    // Check if current directory is in the list
+    const hasCurrentDir = sorted.some((p) => p.worktree === props.currentDirectory)
+
+    // If current directory isn't in the list, add it as a synthetic entry
+    if (!hasCurrentDir && props.currentDirectory) {
+      const now = Date.now()
+      return [
+        { id: props.currentDirectory, worktree: props.currentDirectory, time: { created: now, updated: now } },
+        ...sorted,
+      ].slice(0, 5)
+    }
+
+    return sorted.slice(0, 5)
+  })
+
+  function selectProject(directory: string) {
+    if (directory !== props.currentDirectory) {
+      layout.projects.open(directory)
+      props.onSelectProject(directory)
+    }
+  }
+
+  async function chooseProject() {
+    function resolve(result: string | string[] | null) {
+      if (Array.isArray(result)) {
+        if (result[0]) selectProject(result[0])
+      } else if (result) {
+        selectProject(result)
+      }
+    }
+
+    if (platform.openDirectoryPickerDialog && server.isLocal()) {
+      const result = await platform.openDirectoryPickerDialog?.({
+        title: "Open project",
+        multiple: false,
+      })
+      resolve(result)
+    } else {
+      dialog.show(
+        () => <DialogSelectDirectory multiple={false} onSelect={resolve} />,
+        () => resolve(null),
+      )
+    }
+  }
+
+  return (
+    <div class="flex flex-col items-center justify-center h-full p-4">
+      <div class="w-full max-w-sm">
+        <div class="text-center mb-6">
+          <div class="text-14-medium text-text-base">New Session</div>
+          <div class="text-12-regular text-text-weak mt-1">Type a message to start</div>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <div class="flex gap-2 items-center justify-between px-2 mb-1">
+            <div class="text-12-regular text-text-weak">Projects</div>
+            <Button icon="folder-add-left" size="small" variant="ghost" onClick={chooseProject}>
+              Open
+            </Button>
+          </div>
+          <For each={projects()}>
+            {(project) => {
+              const isSelected = () => project.worktree === props.currentDirectory
+              return (
+                <Button
+                  size="normal"
+                  variant={isSelected() ? "secondary" : "ghost"}
+                  class="text-12-mono text-left justify-between px-2 py-1.5"
+                  onClick={() => selectProject(project.worktree)}
+                >
+                  <span class="truncate" classList={{ "text-text-accent-base": isSelected() }}>
+                    {project.worktree.replace(homedir(), "~")}
+                  </span>
+                  <Show when={isSelected()}>
+                    <span class="text-11-regular text-text-accent-base shrink-0 ml-2">current</span>
+                  </Show>
+                  <Show when={!isSelected()}>
+                    <span class="text-11-regular text-text-weaker shrink-0 ml-2">
+                      {DateTime.fromMillis(project.time.updated ?? project.time.created).toRelative()}
+                    </span>
+                  </Show>
+                </Button>
+              )
+            }}
+          </For>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 type ActivePaneProps = {
@@ -42,8 +146,6 @@ function same<T>(a: readonly T[], b: readonly T[]) {
 
 function PaneContent(props: ActivePaneProps) {
   const sync = useSync()
-  const layout = useLayout()
-  const terminal = useTerminal()
   const multiPane = useMultiPane()
 
   const [store, setStore] = createStore({
@@ -108,8 +210,6 @@ function PaneContent(props: ActivePaneProps) {
   }
 
   const isFocused = createMemo(() => multiPane.focusedPaneId() === props.paneId)
-  const [isHovered, setIsHovered] = createSignal(false)
-  const showPromptBar = createMemo(() => isFocused() || isHovered())
 
   return (
     <div
@@ -126,8 +226,6 @@ function PaneContent(props: ActivePaneProps) {
           multiPane.setFocused(props.paneId)
         }
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <PaneHeader
         paneId={props.paneId}
@@ -143,12 +241,10 @@ function PaneContent(props: ActivePaneProps) {
           <Show
             when={props.sessionId}
             fallback={
-              <div class="flex items-center justify-center h-full text-text-weak">
-                <div class="text-center">
-                  <div class="text-14-medium">New Session</div>
-                  <div class="text-12-regular mt-1">Type a message to start</div>
-                </div>
-              </div>
+              <NewSessionProjectList
+                currentDirectory={props.directory}
+                onSelectProject={(dir) => handleDirectoryChange(dir)}
+              />
             }
           >
             <div class="flex items-start justify-start h-full min-h-0">
@@ -164,77 +260,20 @@ function PaneContent(props: ActivePaneProps) {
                   messageID={activeMessage()!.id}
                   lastUserMessageID={lastUserMessage()?.id}
                   stepsExpanded={store.stepsExpanded}
+                  hideTitle={true}
+                  disableSticky={true}
                   onStepsExpandedToggle={() => setStore("stepsExpanded", (x) => !x)}
                   onUserInteracted={() => {}}
                   classes={{
-                    root: "pb-16 flex-1 min-w-0",
-                    content: "pb-16",
+                    root: "pb-4 flex-1 min-w-0",
+                    content: "pb-4",
                     container: "w-full px-3 " + (visibleUserMessages().length > 1 ? "pl-12" : ""),
                   }}
                 />
               </Show>
             </div>
           </Show>
-
-          <Show when={showPromptBar()}>
-            <div class="absolute inset-x-0 bottom-3 flex flex-col justify-center items-center z-50 px-3">
-              <div class="w-full max-w-[600px]">
-                <PromptInput
-                  paneId={props.paneId}
-                  sessionId={props.sessionId}
-                  onSessionCreated={(sessionId) => multiPane.updatePane(props.paneId, { sessionId })}
-                />
-              </div>
-            </div>
-          </Show>
         </div>
-
-        <Show when={layout.terminal.opened()}>
-          <div
-            class="relative w-full flex flex-col shrink-0 border-t border-border-weak-base"
-            style={{ height: `${Math.min(layout.terminal.height(), MAX_PANE_TERMINAL_HEIGHT)}px` }}
-          >
-            <ResizeHandle
-              direction="vertical"
-              size={Math.min(layout.terminal.height(), MAX_PANE_TERMINAL_HEIGHT)}
-              min={80}
-              max={300}
-              collapseThreshold={40}
-              onResize={layout.terminal.resize}
-              onCollapse={layout.terminal.close}
-            />
-            <Tabs variant="alt" value={terminal.active()} onChange={terminal.open}>
-              <Tabs.List class="h-8">
-                <For each={terminal.all()}>
-                  {(pty: LocalPTY) => (
-                    <Tabs.Trigger
-                      value={pty.id}
-                      closeButton={
-                        <Tooltip value="Close terminal" placement="bottom">
-                          <IconButton icon="close" variant="ghost" onClick={() => terminal.close(pty.id)} />
-                        </Tooltip>
-                      }
-                    >
-                      {pty.title}
-                    </Tabs.Trigger>
-                  )}
-                </For>
-                <div class="h-full flex items-center justify-center">
-                  <Tooltip value="New terminal">
-                    <IconButton icon="plus-small" variant="ghost" iconSize="large" onClick={terminal.new} />
-                  </Tooltip>
-                </div>
-              </Tabs.List>
-              <For each={terminal.all()}>
-                {(pty: LocalPTY) => (
-                  <Tabs.Content value={pty.id}>
-                    <Terminal pty={pty} onCleanup={terminal.update} onConnectError={() => terminal.clone(pty.id)} />
-                  </Tabs.Content>
-                )}
-              </For>
-            </Tabs>
-          </div>
-        </Show>
       </div>
     </div>
   )
@@ -298,9 +337,12 @@ function EmptyPaneContent(props: { paneId: string }) {
         }}
       >
         <div class="text-12-regular text-text-weak">New Tab</div>
-        <Show when={multiPane.panes().length > 1}>
-          <IconButton icon="close" variant="ghost" onClick={handleClose} />
-        </Show>
+        <div class="flex items-center">
+          <IconButton icon="plus" variant="ghost" onClick={() => multiPane.addPane()} />
+          <Show when={multiPane.panes().length > 1}>
+            <IconButton icon="close" variant="ghost" onClick={handleClose} />
+          </Show>
+        </div>
       </header>
       <div class="flex-1 min-h-0 bg-background-stronger">
         <PaneHome onSelectProject={handleSelectProject} />

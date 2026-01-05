@@ -1,16 +1,209 @@
-import { Show, createMemo, onMount, createEffect, on } from "solid-js"
-import { useSearchParams } from "@solidjs/router"
+import { Show, createMemo, onMount, createEffect, on, For, onCleanup } from "solid-js"
+import { useSearchParams, useNavigate } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
-import { PaneToolbar } from "@/components/pane-toolbar"
 import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
 import { useLayout } from "@/context/layout"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
+import { SDKProvider, useSDK } from "@/context/sdk"
+import { SyncProvider, useSync } from "@/context/sync"
+import { LocalProvider, useLocal } from "@/context/local"
+import { DataProvider } from "@opencode-ai/ui/context"
+import { TerminalProvider, useTerminal, type LocalPTY } from "@/context/terminal"
+import { PromptProvider, usePrompt, type Prompt } from "@/context/prompt"
+import { PromptInput } from "@/components/prompt-input"
+import { Terminal } from "@/components/terminal"
+import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
+import { Tabs } from "@opencode-ai/ui/tabs"
+import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { base64Encode } from "@opencode-ai/util/encode"
+
+const MAX_TERMINAL_HEIGHT = 200
+
+// Cache to preserve prompt content and settings when switching between panes
+export type PaneCache = {
+  prompt?: Prompt
+  agent?: string
+  model?: { providerID: string; modelID: string }
+  variant?: string
+}
+export const paneCache = new Map<string, PaneCache>()
+
+// Inner component that has access to terminal context
+function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) {
+  const multiPane = useMultiPane()
+  const layout = useLayout()
+  const terminal = useTerminal()
+  const prompt = usePrompt()
+  const local = useLocal()
+  let editorRef: HTMLDivElement | undefined
+
+  function handleSessionCreated(sessionId: string) {
+    multiPane.updatePane(props.paneId, { sessionId })
+  }
+
+  // Restore settings from cache on mount (before render to avoid flicker)
+  const cached = paneCache.get(props.paneId)
+  if (cached) {
+    if (cached.agent) local.agent.set(cached.agent)
+    if (cached.model) local.model.set(cached.model)
+    if (cached.variant !== undefined) local.model.variant.set(cached.variant)
+    if (cached.prompt) prompt.set(cached.prompt)
+  }
+
+  // Save all settings to cache on cleanup (before unmount)
+  onCleanup(() => {
+    const cache: PaneCache = {}
+
+    // Save prompt
+    const currentPrompt = prompt.current()
+    if (currentPrompt && prompt.dirty()) {
+      cache.prompt = currentPrompt
+    }
+
+    // Save agent
+    const currentAgent = local.agent.current()
+    if (currentAgent) {
+      cache.agent = currentAgent.name
+    }
+
+    // Save model
+    const currentModel = local.model.current()
+    if (currentModel) {
+      cache.model = { providerID: currentModel.provider.id, modelID: currentModel.id }
+    }
+
+    // Save variant
+    cache.variant = local.model.variant.current()
+
+    paneCache.set(props.paneId, cache)
+  })
+
+  // Auto-focus prompt when component mounts
+  onMount(() => {
+    requestAnimationFrame(() => {
+      editorRef?.focus()
+    })
+  })
+
+  return (
+    <div class="shrink-0 flex flex-col border-t border-border-weak-base bg-background-base">
+      {/* Terminal section */}
+      <Show when={layout.terminal.opened()}>
+        <div
+          class="relative w-full flex flex-col shrink-0"
+          style={{ height: `${Math.min(layout.terminal.height(), MAX_TERMINAL_HEIGHT)}px` }}
+        >
+          <ResizeHandle
+            direction="vertical"
+            size={Math.min(layout.terminal.height(), MAX_TERMINAL_HEIGHT)}
+            min={80}
+            max={300}
+            collapseThreshold={40}
+            onResize={layout.terminal.resize}
+            onCollapse={layout.terminal.close}
+          />
+          <Tabs variant="alt" value={terminal.active()} onChange={terminal.open}>
+            <Tabs.List class="h-8">
+              <For each={terminal.all()}>
+                {(pty: LocalPTY) => (
+                  <Tabs.Trigger
+                    value={pty.id}
+                    closeButton={
+                      <Tooltip value="Close terminal" placement="bottom">
+                        <IconButton icon="close" variant="ghost" onClick={() => terminal.close(pty.id)} />
+                      </Tooltip>
+                    }
+                  >
+                    {pty.title}
+                  </Tabs.Trigger>
+                )}
+              </For>
+              <div class="h-full flex items-center justify-center">
+                <Tooltip value="New terminal">
+                  <IconButton icon="plus-small" variant="ghost" iconSize="large" onClick={terminal.new} />
+                </Tooltip>
+              </div>
+            </Tabs.List>
+            <For each={terminal.all()}>
+              {(pty: LocalPTY) => (
+                <Tabs.Content value={pty.id}>
+                  <Terminal pty={pty} onCleanup={terminal.update} onConnectError={() => terminal.clone(pty.id)} />
+                </Tabs.Content>
+              )}
+            </For>
+          </Tabs>
+        </div>
+      </Show>
+
+      {/* Prompt input */}
+      <div class="p-3 flex justify-center">
+        <div class="w-full max-w-[800px]">
+          <PromptInput
+            ref={(el) => (editorRef = el)}
+            paneId={props.paneId}
+            sessionId={props.sessionId}
+            onSessionCreated={handleSessionCreated}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Wrapper that provides SDK/Sync context for the global prompt
+function GlobalPromptSynced(props: { paneId: string; directory: string; sessionId?: string }) {
+  const sync = useSync()
+  const sdk = useSDK()
+  const respond = (input: { sessionID: string; permissionID: string; response: "once" | "always" | "reject" }) =>
+    sdk.client.permission.respond(input)
+
+  return (
+    <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
+      <LocalProvider>
+        <TerminalProvider paneId={props.paneId}>
+          <PromptProvider paneId={props.paneId}>
+            <GlobalTerminalAndPrompt paneId={props.paneId} sessionId={props.sessionId} />
+          </PromptProvider>
+        </TerminalProvider>
+      </LocalProvider>
+    </DataProvider>
+  )
+}
+
+// Global prompt wrapper that switches based on focused pane
+function GlobalPromptWrapper() {
+  const multiPane = useMultiPane()
+  const focused = createMemo(() => multiPane.focusedPane())
+
+  // Use keyed Show to remount providers when focused pane changes
+  return (
+    <Show when={focused()} keyed>
+      {(pane) => (
+        <Show when={pane.directory}>
+          {(directory) => (
+            <SDKProvider directory={directory()}>
+              <SyncProvider>
+                <GlobalPromptSynced
+                  paneId={pane.id}
+                  directory={directory()}
+                  sessionId={pane.sessionId}
+                />
+              </SyncProvider>
+            </SDKProvider>
+          )}
+        </Show>
+      )}
+    </Show>
+  )
+}
 
 function MultiPaneContent() {
   const multiPane = useMultiPane()
   const layout = useLayout()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
@@ -71,13 +264,26 @@ function MultiPaneContent() {
     ),
   )
 
+  // Auto-switch to single view when only 1 pane with a session remains
+  // Use defer to skip initial mount, only trigger when user closes panes
+  createEffect(
+    on(
+      () => multiPane.panes(),
+      (panes, prev) => {
+        // Only switch if we're reducing from multiple panes to 1
+        if (prev && prev.length > 1 && panes.length === 1 && panes[0].directory && panes[0].sessionId) {
+          navigate(`/${base64Encode(panes[0].directory)}/session/${panes[0].sessionId}`)
+        }
+      },
+    ),
+  )
+
   function handleAddFirstPane() {
     multiPane.addPane(getLastProject())
   }
 
   return (
     <div class="size-full flex flex-col bg-background-base">
-      <PaneToolbar />
       <Show
         when={hasPanes()}
         fallback={
@@ -100,6 +306,7 @@ function MultiPaneContent() {
             <SessionPane paneId={pane.id} directory={pane.directory} sessionId={pane.sessionId} />
           )}
         />
+        <GlobalPromptWrapper />
       </Show>
     </div>
   )

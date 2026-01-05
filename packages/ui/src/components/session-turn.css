@@ -47,6 +47,12 @@
     margin-left: -9px;
     padding-left: 9px;
     padding-bottom: 8px;
+
+    &[data-disable-sticky] {
+      position: static;
+      top: unset;
+      z-index: unset;
+    }
   }
 
   [data-slot="session-turn-message-header"] {

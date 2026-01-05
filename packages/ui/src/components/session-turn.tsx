@@ -117,6 +117,8 @@ export function SessionTurn(
     messageID: string
     lastUserMessageID?: string
     stepsExpanded?: boolean
+    hideTitle?: boolean
+    disableSticky?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
     classes?: {
@@ -452,28 +454,34 @@ export function SessionTurn(
                     <Part part={shellModePart()!} message={msg()} defaultOpen />
                   </Match>
                   <Match when={true}>
-                    {/* Title (sticky) */}
-                    <div ref={(el) => setStore("stickyTitleRef", el)} data-slot="session-turn-sticky-title">
-                      <div data-slot="session-turn-message-header">
-                        <div data-slot="session-turn-message-title">
-                          <Switch>
-                            <Match when={working()}>
-                              <Typewriter as="h1" text={msg().summary?.title} data-slot="session-turn-typewriter" />
-                            </Match>
-                            <Match when={true}>
-                              <h1>{msg().summary?.title}</h1>
-                            </Match>
-                          </Switch>
+                    {/* Title (sticky) - hidden when hideTitle prop is true */}
+                    <Show when={!props.hideTitle}>
+                      <div ref={(el) => setStore("stickyTitleRef", el)} data-slot="session-turn-sticky-title">
+                        <div data-slot="session-turn-message-header">
+                          <div data-slot="session-turn-message-title">
+                            <Switch>
+                              <Match when={working()}>
+                                <Typewriter as="h1" text={msg().summary?.title} data-slot="session-turn-typewriter" />
+                              </Match>
+                              <Match when={true}>
+                                <h1>{msg().summary?.title}</h1>
+                              </Match>
+                            </Switch>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </Show>
                     {/* User Message */}
                     <div data-slot="session-turn-message-content">
                       <Message message={msg()} parts={parts()} />
                     </div>
-                    {/* Trigger (sticky) */}
+                    {/* Trigger (sticky unless disableSticky) */}
                     <Show when={working() || hasSteps()}>
-                      <div ref={(el) => setStore("stickyTriggerRef", el)} data-slot="session-turn-response-trigger">
+                      <div
+                        ref={(el) => setStore("stickyTriggerRef", el)}
+                        data-slot="session-turn-response-trigger"
+                        data-disable-sticky={props.disableSticky || undefined}
+                      >
                         <Button
                           data-expandable={assistantMessages().length > 0}
                           data-slot="session-turn-collapsible-trigger-content"
