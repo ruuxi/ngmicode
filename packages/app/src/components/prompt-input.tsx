@@ -1583,8 +1583,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             >
                               <span class="capitalize text-13-medium text-text-strong">{agent.name}</span>
                               <Show when={agent.description}>
-                                <Tooltip placement="right" value={agent.description}>
-                                  <span class="text-12-regular text-text-weak truncate max-w-48">{agent.description}</span>
+                                <Tooltip
+                                  placement="right"
+                                  value={<span class="text-12-regular text-text-on-interactive-base">{agent.description}</span>}
+                                >
+                                  <span class="text-12-regular text-text-weak truncate max-w-24">{agent.description}</span>
                                 </Tooltip>
                               </Show>
                             </DropdownMenu.Item>

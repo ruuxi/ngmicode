@@ -154,14 +154,6 @@ export namespace Config {
       result.compaction = { ...result.compaction, prune: false }
     }
 
-    if (Flag.OPENCODE_CLIENT.startsWith("desktop")) {
-      const desktopPlugin = "oh-my-opencode"
-      const plugins = result.plugin ?? []
-      if (!plugins.some((entry) => entry.startsWith(desktopPlugin))) {
-        result.plugin = [...plugins, desktopPlugin]
-      }
-    }
-
     return {
       config: result,
       directories,

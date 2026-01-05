@@ -113,11 +113,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const baseList = createMemo(() => [...BUILTIN_MODES, ...store.custom])
       const list = createMemo(() => baseList().map((item) => applyModeOverride(item, store.overrides[item.id])))
-      const current = createMemo(() => {
-        const selected = list().find((item) => item.id === store.current)
-        if (selected) return selected
-        return list().find((item) => item.id === DEFAULT_MODE_ID) ?? list()[0]
-      })
 
       const installedPlugins = createMemo(() => sync.data.config.plugin ?? [])
       const agentNames = createMemo(() => new Set(sync.data.agent.map((agent) => agent.name)))
@@ -126,13 +121,28 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const required = target.requiresPlugins ?? []
         if (required.length === 0) return []
         return required.filter((plugin) => {
+          // For oh-my-opencode, the definitive check is whether Sisyphus agent actually exists
+          // This is more reliable than checking if plugin is in config (which auto-install adds)
+          if (plugin === "oh-my-opencode") {
+            return !agentNames().has("Sisyphus")
+          }
+          // For other plugins, check if they're in the config
           if (installedPlugins().some((entry) => entry.includes(plugin))) return false
-          if (plugin === "oh-my-opencode" && agentNames().has("Sisyphus")) return false
           return true
         })
       }
 
       const isAvailable = (target: ModeDefinition) => missingPlugins(target).length === 0
+
+      const current = createMemo(() => {
+        const selected = list().find((item) => item.id === store.current)
+        // Only use selected mode if it's available (required plugins installed)
+        if (selected && isAvailable(selected)) return selected
+        // Fall back to default mode
+        const defaultMode = list().find((item) => item.id === DEFAULT_MODE_ID)
+        if (defaultMode) return defaultMode
+        return list()[0]
+      })
 
       const getAgentRules = (target?: ModeDefinition) => {
         const active = target ?? current()
