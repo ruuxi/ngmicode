@@ -553,8 +553,26 @@ export function SessionTurn(
                     <div data-slot="session-turn-message-content">
                       <Message message={msg()} parts={parts()} />
                     </div>
+                    {/* Working indicator - shows when working but no steps yet */}
+                    <Show when={working() && allToolParts().length === 0}>
+                      <div
+                        data-slot="session-turn-response-trigger"
+                        data-disable-sticky={props.disableSticky || undefined}
+                      >
+                        <Button
+                          data-slot="session-turn-collapsible-trigger-content"
+                          variant="ghost"
+                          size="small"
+                        >
+                          <Spinner />
+                          <span>{store.status ?? "Considering next steps"}</span>
+                          <span>·</span>
+                          <span>{store.duration}</span>
+                        </Button>
+                      </div>
+                    </Show>
                     {/* Steps Container - unified for both collapsed and expanded */}
-                    <Show when={working() || allToolParts().length > 0}>
+                    <Show when={allToolParts().length > 0}>
                       <StepsContainer
                         toolParts={allToolParts()}
                         expanded={props.stepsExpanded ?? false}

@@ -7,6 +7,7 @@ import {
   Switch,
   createResource,
   createMemo,
+  createSignal,
   createEffect,
   on,
   createRenderEffect,
@@ -23,6 +24,7 @@ import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
+import { Spinner } from "@opencode-ai/ui/spinner"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
@@ -304,6 +306,9 @@ export default function Page() {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
+  const [syncingSessionId, setSyncingSessionId] = createSignal<string | undefined>(undefined)
+  const sessionSyncing = createMemo(() => syncingSessionId() === params.id)
+  const showSessionLoading = createMemo(() => !!params.id && sessionSyncing() && messages().length === 0)
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () => messages().filter((m) => m.role === "user") as UserMessage[],
@@ -377,13 +382,29 @@ export default function Page() {
   let inputRef!: HTMLDivElement
 
   createEffect(() => {
-    if (!params.id) return
-    sync.session.sync(params.id).catch((err) => {
-      console.error("Failed to sync session:", params.id, err)
+    if (!params.id) {
+      setSyncingSessionId(undefined)
+      return
+    }
+    const sessionId = params.id
+    let active = true
+    setSyncingSessionId(sessionId)
+    sync.session.sync(sessionId).then(() => {
+      if (active && params.id === sessionId) {
+        setSyncingSessionId(undefined)
+      }
+    }).catch((err) => {
+      if (active && params.id === sessionId) {
+        setSyncingSessionId(undefined)
+      }
+      console.error("Failed to sync session:", sessionId, err)
       // If session not found, navigate to new session page
       if (err?.name === "NotFoundError") {
         navigate(`/${params.dir}/session`, { replace: true })
       }
+    })
+    onCleanup(() => {
+      active = false
     })
   })
 
@@ -836,6 +857,15 @@ export default function Page() {
     onUserInteracted: () => setStore("userInteracted", true),
   })
 
+  const SessionLoading = (props: { class?: string }) => (
+    <Show when={showSessionLoading()}>
+      <div class={`flex items-center justify-center text-12-regular text-text-weak ${props.class ?? ""}`}>
+        <Spinner class="size-4 mr-2" />
+        <span>Loading session...</span>
+      </div>
+    </Show>
+  )
+
   const MobileTurns = () => (
     <div
       ref={mobileAutoScroll.scrollRef}
@@ -862,6 +892,7 @@ export default function Page() {
             />
           )}
         </For>
+        <SessionLoading class="py-6 w-full" />
       </div>
     </div>
   )
@@ -902,6 +933,7 @@ export default function Page() {
             onMessageSelect={setActiveMessage}
             wide={!showTabs()}
           />
+          <SessionLoading class="flex-1 min-w-0 h-full pb-20" />
           <Show when={activeMessage()}>
             <SessionTurn
               sessionID={params.id!}
