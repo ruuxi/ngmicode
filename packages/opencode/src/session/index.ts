@@ -415,10 +415,11 @@ export namespace Session {
           await remove({ sessionID: child.id, removeWorktree: input.removeWorktree })
         }
         await unshare(input.sessionID).catch(() => {})
+
+        // Remove all messages (parts are inline)
         for (const msg of await Storage.list(["message", input.sessionID])) {
-          for (const part of await Storage.list(["part", msg.at(-1)!])) {
-            await Storage.remove(part)
-          }
+          const messageID = msg.at(-1)!
+          MessageV2.PartStore.clearCache(input.sessionID, messageID)
           await Storage.remove(msg)
         }
         await Storage.remove(["session", project.id, input.sessionID])
@@ -436,7 +437,18 @@ export namespace Session {
   )
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    await Storage.write(["message", msg.sessionID, msg.id], msg)
+    // Cache message info for part store
+    MessageV2.PartStore.cacheMessageInfo(msg)
+
+    // Get current parts from cache (if any)
+    const parts = await MessageV2.PartStore.getParts(msg.sessionID, msg.id).catch(() => [])
+
+    // Write message with inline parts (new format)
+    await Storage.write(["message", msg.sessionID, msg.id], {
+      info: msg,
+      parts: parts.slice().sort((a, b) => (a.id > b.id ? 1 : -1)),
+    })
+
     Bus.publish(MessageV2.Event.Updated, {
       info: msg,
     })
@@ -449,6 +461,9 @@ export namespace Session {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
+      // Clear cache
+      MessageV2.PartStore.clearCache(input.sessionID, input.messageID)
+
       await Storage.remove(["message", input.sessionID, input.messageID])
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
@@ -465,7 +480,9 @@ export namespace Session {
       partID: Identifier.schema("part"),
     }),
     async (input) => {
-      await Storage.remove(["part", input.messageID, input.partID])
+      // Remove from cache and schedule debounced flush
+      await MessageV2.PartStore.removePart(input.sessionID, input.messageID, input.partID)
+
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -490,13 +507,26 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
-    await Storage.write(["part", part.messageID, part.id], part)
+
+    // Update cache and schedule debounced flush
+    await MessageV2.PartStore.updatePart(part)
+
+    // Bus event fires immediately for UI responsiveness
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,
     })
     return part
   })
+
+  // Flush all pending part writes (call before session completion or shutdown)
+  export const flushParts = async (sessionID: string, messageID: string) => {
+    await MessageV2.PartStore.flush(sessionID, messageID)
+  }
+
+  export const flushAllParts = async () => {
+    await MessageV2.PartStore.flushAll()
+  }
 
   export const getUsage = fn(
     z.object({

@@ -559,7 +559,7 @@ export namespace SessionPrompt {
         })) as MessageV2.Assistant
 
         // Extract prompt text and images from user message parts
-        const userParts = await MessageV2.parts(lastUser.id)
+        const userParts = await MessageV2.parts({ sessionID, messageID: lastUser.id })
         const promptText = userParts
           .filter((p): p is MessageV2.TextPart => p.type === "text")
           .map((p) => p.text)
