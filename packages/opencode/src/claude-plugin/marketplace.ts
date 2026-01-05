@@ -10,7 +10,7 @@ export namespace ClaudePluginMarketplace {
 
   // Default Claude Code marketplace URLs
   const DEFAULT_MARKETPLACES = [
-    "https://raw.githubusercontent.com/anthropics/claude-code-plugins/main/marketplace.json",
+    "https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/.claude-plugin/marketplace.json",
   ]
 
   // Cache for marketplace entries with TTL
@@ -133,6 +133,24 @@ export namespace ClaudePluginMarketplace {
     )
   }
 
+  // Base URL for official plugins repo
+  const OFFICIAL_REPO_BASE = "https://github.com/anthropics/claude-plugins-official"
+
+  /**
+   * Resolve source to a downloadable URL
+   */
+  function resolveSource(source: ClaudePluginSchema.MarketplaceSource): string {
+    if (typeof source === "string") {
+      // Relative paths are relative to the official plugins repo
+      if (source.startsWith("./")) {
+        return `${OFFICIAL_REPO_BASE}/tree/main/${source.slice(2)}`
+      }
+      return source
+    }
+    // Object format: { source: "url", url: "..." }
+    return source.url
+  }
+
   /**
    * Download and install a plugin from the marketplace
    */
@@ -146,28 +164,42 @@ export namespace ClaudePluginMarketplace {
     // Ensure the directory exists
     await mkdir(pluginDir, { recursive: true })
 
-    log.info("downloading plugin", { id: entry.id, source: entry.source, target: pluginDir })
+    const resolvedSource = resolveSource(entry.source)
+    log.info("downloading plugin", { id: entry.id, source: resolvedSource, target: pluginDir })
 
     // Handle different source types
-    if (entry.source.startsWith("git://") || entry.source.includes("github.com")) {
-      // Git clone
-      await cloneGitRepo(entry.source, pluginDir)
-    } else if (entry.source.startsWith("http://") || entry.source.startsWith("https://")) {
+    if (resolvedSource.startsWith("git://") || resolvedSource.includes("github.com")) {
+      // Git clone (for GitHub, clone the specific subdirectory using sparse checkout)
+      await cloneGitRepo(resolvedSource, pluginDir, entry.source)
+    } else if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
       // Download archive (tar.gz or zip)
-      await downloadArchive(entry.source, pluginDir)
+      await downloadArchive(resolvedSource, pluginDir)
     } else {
-      throw new Error(`Unsupported source type: ${entry.source}`)
+      throw new Error(`Unsupported source type: ${resolvedSource}`)
     }
 
     return pluginDir
   }
 
-  async function cloneGitRepo(source: string, targetDir: string): Promise<void> {
-    // Convert github.com URLs to git:// format if needed
-    let gitUrl = source
-    if (source.includes("github.com") && !source.startsWith("git://")) {
-      gitUrl = source
-        .replace("https://github.com/", "https://github.com/")
+  async function cloneGitRepo(
+    resolvedUrl: string,
+    targetDir: string,
+    originalSource: ClaudePluginSchema.MarketplaceSource,
+  ): Promise<void> {
+    // Check if this is a subdirectory of a repo (relative path like ./plugins/foo)
+    if (typeof originalSource === "string" && originalSource.startsWith("./")) {
+      // Use sparse checkout for subdirectory
+      const subPath = originalSource.slice(2) // Remove "./"
+      await sparseClone(OFFICIAL_REPO_BASE, subPath, targetDir)
+      return
+    }
+
+    // Full repo clone
+    let gitUrl = resolvedUrl
+    if (resolvedUrl.includes("github.com") && !resolvedUrl.endsWith(".git")) {
+      // Convert tree/main URLs back to clone URLs
+      gitUrl = resolvedUrl
+        .replace(/\/tree\/[^/]+\/.*$/, "")
         .replace(/\/?$/, ".git")
     }
 
@@ -180,6 +212,66 @@ export namespace ClaudePluginMarketplace {
     if (exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text()
       throw new Error(`Git clone failed: ${stderr}`)
+    }
+  }
+
+  /**
+   * Clone only a specific subdirectory from a repo using sparse checkout
+   */
+  async function sparseClone(repoUrl: string, subPath: string, targetDir: string): Promise<void> {
+    const gitUrl = repoUrl.endsWith(".git") ? repoUrl : `${repoUrl}.git`
+
+    // Initialize empty repo
+    await runGit(["init", targetDir])
+
+    // Add remote
+    await runGit(["-C", targetDir, "remote", "add", "origin", gitUrl])
+
+    // Enable sparse checkout
+    await runGit(["-C", targetDir, "config", "core.sparseCheckout", "true"])
+
+    // Set sparse checkout path
+    const sparseFile = path.join(targetDir, ".git", "info", "sparse-checkout")
+    await Bun.write(sparseFile, subPath + "\n")
+
+    // Fetch and checkout
+    await runGit(["-C", targetDir, "fetch", "--depth", "1", "origin", "main"])
+    await runGit(["-C", targetDir, "checkout", "main"])
+
+    // Move subdirectory contents to root
+    const subDir = path.join(targetDir, subPath)
+    const tempDir = targetDir + "-temp"
+
+    // Move contents from subdir to temp, then back to target
+    const { rename } = await import("fs/promises")
+    await rename(subDir, tempDir)
+
+    // Clean up target dir (except .git)
+    const { readdir, rm } = await import("fs/promises")
+    const entries = await readdir(targetDir)
+    for (const entry of entries) {
+      if (entry !== ".git") {
+        await rm(path.join(targetDir, entry), { recursive: true, force: true })
+      }
+    }
+
+    // Move temp contents back
+    const tempEntries = await readdir(tempDir)
+    for (const entry of tempEntries) {
+      await rename(path.join(tempDir, entry), path.join(targetDir, entry))
+    }
+    await rm(tempDir, { recursive: true, force: true })
+  }
+
+  async function runGit(args: string[]): Promise<void> {
+    const proc = Bun.spawn(["git", ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const exitCode = await proc.exited
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text()
+      throw new Error(`Git command failed: git ${args.join(" ")}: ${stderr}`)
     }
   }
 

@@ -362,3 +362,42 @@ export const ClaudePluginRoute = new Hono()
       return c.json(plugins)
     },
   )
+
+  // Get plugin stats from community registry
+  .get(
+    "/stats",
+    describeRoute({
+      summary: "Get plugin stats",
+      description: "Get download statistics from the community plugin registry.",
+      operationId: "claude-plugin.stats",
+      responses: {
+        200: {
+          description: "Plugin statistics",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.record(
+                  z.string(),
+                  z.object({
+                    name: z.string(),
+                    downloads: z.number(),
+                    stars: z.number(),
+                    version: z.string().optional(),
+                  }),
+                ),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const stats = await ClaudePlugin.Stats.fetch()
+      // Convert Map to plain object for JSON serialization
+      const obj: Record<string, { name: string; downloads: number; stars: number; version?: string }> = {}
+      for (const [key, value] of stats) {
+        obj[key] = value
+      }
+      return c.json(obj)
+    },
+  )

@@ -287,27 +287,66 @@ export namespace ClaudePluginSchema {
 
   export type InstalledPlugin = z.infer<typeof InstalledPlugin>
 
-  // Marketplace plugin entry
+  // Marketplace plugin source (can be string path or object with URL)
+  export const MarketplaceSource = z.union([
+    z.string(),
+    z.object({
+      source: z.literal("url"),
+      url: z.string(),
+    }),
+  ])
+
+  export type MarketplaceSource = z.infer<typeof MarketplaceSource>
+
+  // Marketplace plugin entry (matches official claude-plugins-official format)
   export const MarketplaceEntry = z
     .object({
-      id: z.string(),
+      // name is the primary identifier
       name: z.string(),
-      version: z.string(),
+      // id is optional (defaults to name)
+      id: z.string().optional(),
+      version: z.string().optional(),
       description: z.string().optional(),
-      author: z.string().optional(),
-      source: z.string(),
+      author: z
+        .object({
+          name: z.string(),
+          email: z.string().optional(),
+        })
+        .optional(),
+      source: MarketplaceSource,
       homepage: z.string().optional(),
+      repository: z.string().optional(),
       downloads: z.number().optional(),
       rating: z.number().optional(),
       tags: z.array(z.string()).optional(),
+      category: z.string().optional(),
+      strict: z.boolean().optional(),
+      // Inline LSP servers (some plugins define these directly)
+      lspServers: z.record(z.string(), LspServerConfig.extend({
+        startupTimeout: z.number().optional(),
+      })).optional(),
     })
+    .transform((entry) => ({
+      ...entry,
+      // Ensure id is always set (use name if not provided)
+      id: entry.id ?? entry.name,
+    }))
     .meta({ ref: "ClaudePluginMarketplaceEntry" })
 
   export type MarketplaceEntry = z.infer<typeof MarketplaceEntry>
 
-  // Marketplace registry format
+  // Marketplace registry format (matches official claude-plugins-official format)
   export const MarketplaceRegistry = z
     .object({
+      $schema: z.string().optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      owner: z
+        .object({
+          name: z.string(),
+          email: z.string().optional(),
+        })
+        .optional(),
       version: z.string().optional(),
       plugins: z.array(MarketplaceEntry),
     })

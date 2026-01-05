@@ -9,6 +9,7 @@ import { ClaudePluginHooks } from "./hooks"
 import { ClaudePluginLoader } from "./loader"
 import { ClaudePluginMarketplace } from "./marketplace"
 import { ClaudePluginSchema } from "./schema"
+import { ClaudePluginStats } from "./stats"
 import { ClaudePluginStorage } from "./storage"
 import { ClaudePluginTransform } from "./transform"
 import { ClaudePluginTranscript } from "./transcript"
@@ -23,6 +24,7 @@ export namespace ClaudePlugin {
   export const Storage = ClaudePluginStorage
   export const Loader = ClaudePluginLoader
   export const Marketplace = ClaudePluginMarketplace
+  export const Stats = ClaudePluginStats
   export const Hooks = ClaudePluginHooks
   export const Transform = ClaudePluginTransform
   export const Transcript = ClaudePluginTranscript
