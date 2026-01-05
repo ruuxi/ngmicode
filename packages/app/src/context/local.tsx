@@ -1,5 +1,5 @@
 import { createStore, produce, reconcile } from "solid-js/store"
-import { batch, createMemo } from "solid-js"
+import { batch, createEffect, createMemo, on } from "solid-js"
 import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
 import type { FileContent, FileNode, Model, Provider, File as FileStatus } from "@opencode-ai/sdk/v2"
 import { createSimpleContext } from "@opencode-ai/ui/context"
@@ -10,6 +10,9 @@ import { useProviders } from "@/hooks/use-providers"
 import { DateTime } from "luxon"
 import { persisted } from "@/utils/persist"
 import { showToast } from "@opencode-ai/ui/toast"
+import { BUILTIN_MODES, DEFAULT_MODE_ID } from "@/modes/definitions"
+import { deleteCustomMode, saveCustomMode } from "@/modes/custom"
+import type { ModeDefinition, ModeOverride, ModeSettings } from "@/modes/types"
 
 export type LocalFile = FileNode &
   Partial<{
@@ -43,9 +46,177 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sync = useSync()
     const providers = useProviders()
 
+    const mergeModeSettings = (base?: ModeSettings, override?: ModeSettings): ModeSettings | undefined => {
+      if (!base && !override) return undefined
+
+      const baseOmo = base?.ohMyOpenCode
+      const overrideOmo = override?.ohMyOpenCode
+      const mergedOmo =
+        baseOmo || overrideOmo
+          ? {
+              ...baseOmo,
+              ...overrideOmo,
+              sisyphusAgent: {
+                ...baseOmo?.sisyphusAgent,
+                ...overrideOmo?.sisyphusAgent,
+              },
+              claudeCode: {
+                ...baseOmo?.claudeCode,
+                ...overrideOmo?.claudeCode,
+              },
+            }
+          : undefined
+
+      return {
+        ...base,
+        ...override,
+        ohMyOpenCode: mergedOmo,
+      }
+    }
+
+    const applyModeOverride = (base: ModeDefinition, override?: ModeOverride): ModeDefinition => {
+      if (!override) return base
+
+      const providerOverride =
+        override.providerOverride === null
+          ? undefined
+          : override.providerOverride ?? base.providerOverride
+      const defaultAgent = override.defaultAgent === null ? undefined : override.defaultAgent ?? base.defaultAgent
+      const mergedOverrides =
+        base.overrides || override.overrides ? { ...(base.overrides ?? {}), ...(override.overrides ?? {}) } : undefined
+
+      return {
+        ...base,
+        name: override.name ?? base.name,
+        description: override.description ?? base.description,
+        color: override.color ?? base.color,
+        providerOverride,
+        defaultAgent,
+        settings: mergeModeSettings(base.settings, override.settings),
+        overrides: mergedOverrides,
+      }
+    }
+
+    const mode = (() => {
+      const [store, setStore, _, ready] = persisted(
+        "mode.v1",
+        createStore<{
+          current: ModeDefinition["id"]
+          overrides: Record<string, ModeOverride>
+          custom: ModeDefinition[]
+        }>({
+          current: DEFAULT_MODE_ID,
+          overrides: {},
+          custom: [],
+        }),
+      )
+
+      const baseList = createMemo(() => [...BUILTIN_MODES, ...store.custom])
+      const list = createMemo(() => baseList().map((item) => applyModeOverride(item, store.overrides[item.id])))
+      const current = createMemo(() => {
+        const selected = list().find((item) => item.id === store.current)
+        if (selected) return selected
+        return list().find((item) => item.id === DEFAULT_MODE_ID) ?? list()[0]
+      })
+
+      const installedPlugins = createMemo(() => sync.data.config.plugin ?? [])
+      const agentNames = createMemo(() => new Set(sync.data.agent.map((agent) => agent.name)))
+
+      const missingPlugins = (target: ModeDefinition) => {
+        const required = target.requiresPlugins ?? []
+        if (required.length === 0) return []
+        return required.filter((plugin) => {
+          if (installedPlugins().some((entry) => entry.includes(plugin))) return false
+          if (plugin === "oh-my-opencode" && agentNames().has("Sisyphus")) return false
+          return true
+        })
+      }
+
+      const isAvailable = (target: ModeDefinition) => missingPlugins(target).length === 0
+
+      const getAgentRules = (target?: ModeDefinition) => {
+        const active = target ?? current()
+        const allowed = active?.allowedAgents?.length ? new Set(active.allowedAgents) : undefined
+        const disabled = new Set(active?.disabledAgents ?? [])
+        const omo = active?.settings?.ohMyOpenCode
+
+        if (active?.id === "oh-my-opencode" && omo) {
+          for (const name of omo.disabledAgents ?? []) disabled.add(name)
+          if (omo.sisyphusAgent?.disabled) disabled.add("Sisyphus")
+          if (omo.sisyphusAgent?.defaultBuilderEnabled === false) disabled.add("OpenCode-Builder")
+          if (omo.sisyphusAgent?.plannerEnabled === false) disabled.add("Planner-Sisyphus")
+        }
+
+        return { allowed, disabled }
+      }
+
+      const currentAgentRules = createMemo(() => getAgentRules(current()))
+
+      const isAgentAllowed = (name: string, target?: ModeDefinition) => {
+        const rules = target ? getAgentRules(target) : currentAgentRules()
+        if (rules.allowed && !rules.allowed.has(name)) return false
+        if (rules.disabled.has(name)) return false
+        return true
+      }
+
+      const filterAgents = <T extends { name: string }>(agents: T[], target?: ModeDefinition) =>
+        agents.filter((agent) => isAgentAllowed(agent.name, target))
+
+      const set = (id: ModeDefinition["id"] | undefined) => {
+        const available = baseList()
+        const next = id && available.some((item) => item.id === id) ? id : DEFAULT_MODE_ID
+        setStore("current", next)
+      }
+
+      const setOverride = (id: ModeDefinition["id"], override: ModeOverride) => {
+        setStore("overrides", id, (prev) => ({
+          ...prev,
+          ...override,
+          overrides: {
+            ...(prev?.overrides ?? {}),
+            ...(override.overrides ?? {}),
+          },
+          settings: mergeModeSettings(prev?.settings, override.settings),
+        }))
+      }
+
+      const resetOverride = (id: ModeDefinition["id"]) => {
+        setStore(
+          "overrides",
+          produce((draft) => {
+            delete draft[id]
+          }),
+        )
+      }
+
+      return {
+        ready,
+        list,
+        current,
+        set,
+        isAvailable,
+        missingPlugins,
+        isAgentAllowed,
+        filterAgents,
+        providerOverride: createMemo(() => current()?.providerOverride),
+        getOverride(id: ModeDefinition["id"]) {
+          return store.overrides[id]
+        },
+        setOverride,
+        resetOverride,
+        custom: {
+          list: createMemo(() => store.custom),
+          save: saveCustomMode,
+          remove: deleteCustomMode,
+        },
+      }
+    })()
+
     function isModelValid(model: ModelKey) {
+      const providerOverride = mode.providerOverride()
       const provider = providers.all().find((x) => x.id === model.providerID)
       return (
+        (!providerOverride || providerOverride === model.providerID) &&
         !!provider?.models[model.modelID] &&
         providers
           .connected()
@@ -63,7 +234,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     const agent = (() => {
-      const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+      const list = createMemo(() =>
+        mode.filterAgents(sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden)),
+      )
       const [store, setStore] = createStore<{
         current?: string
       }>({
@@ -129,14 +302,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         model: {},
       })
 
-      const available = createMemo(() =>
-        providers.connected().flatMap((p) =>
+      const available = createMemo(() => {
+        const providerOverride = mode.providerOverride()
+        const connected = providers.connected()
+        const filtered = providerOverride ? connected.filter((p) => p.id === providerOverride) : connected
+        return filtered.flatMap((p) =>
           Object.values(p.models).map((m) => ({
             ...m,
             provider: p,
           })),
-        ),
-      )
+        )
+      })
 
       const latest = createMemo(() =>
         pipe(
@@ -184,6 +360,20 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         for (const item of store.recent) {
           if (isModelValid(item)) {
             return item
+          }
+        }
+
+        const providerOverride = mode.providerOverride()
+        if (providerOverride) {
+          const provider = providers.connected().find((p) => p.id === providerOverride)
+          if (provider) {
+            const modelID = providers.default()[providerOverride] ?? Object.keys(provider.models)[0]
+            if (modelID) {
+            return {
+              providerID: providerOverride,
+              modelID,
+            }
+            }
           }
         }
 
@@ -252,12 +442,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         list,
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
+          const providerOverride = mode.providerOverride()
+          const nextModel =
+            model && providerOverride && model.providerID !== providerOverride ? undefined : model
           batch(() => {
             const currentAgent = agent.current()
-            if (currentAgent) setEphemeral("model", currentAgent.name, model ?? fallbackModel())
-            if (model) updateVisibility(model, "show")
-            if (options?.recent && model) {
-              const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
+            if (currentAgent) setEphemeral("model", currentAgent.name, nextModel ?? fallbackModel())
+            if (nextModel) updateVisibility(nextModel, "show")
+            if (options?.recent && nextModel) {
+              const uniq = uniqueBy([nextModel, ...store.recent], (x) => x.providerID + x.modelID)
               if (uniq.length > 5) uniq.pop()
               setStore("recent", uniq)
             }
@@ -315,6 +508,39 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
       }
     })()
+
+    createEffect(
+      on(
+        () => mode.current()?.id,
+        () => {
+          const available = agent.list()
+          if (available.length === 0) return
+          const preferred = mode.current()?.defaultAgent
+          if (preferred && available.some((item) => item.name === preferred)) {
+            agent.set(preferred)
+            return
+          }
+          agent.set(available[0].name)
+        },
+        { defer: true },
+      ),
+    )
+
+    createEffect(() => {
+      const available = agent.list()
+      if (available.length === 0) {
+        agent.set(undefined)
+        return
+      }
+      const currentAgent = agent.current()
+      if (currentAgent && available.some((item) => item.name === currentAgent.name)) return
+      const preferred = mode.current()?.defaultAgent
+      if (preferred && available.some((item) => item.name === preferred)) {
+        agent.set(preferred)
+        return
+      }
+      agent.set(available[0].name)
+    })
 
     const file = (() => {
       const [store, setStore] = createStore<{
@@ -594,6 +820,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const result = {
       slug: createMemo(() => base64Encode(sdk.directory)),
+      mode,
       model,
       agent,
       file,

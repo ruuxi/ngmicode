@@ -65,6 +65,7 @@ export namespace Config {
 
     result.agent = result.agent || {}
     result.mode = result.mode || {}
+    result.modes = result.modes || {}
     result.plugin = result.plugin || []
 
     const directories = [
@@ -98,6 +99,7 @@ export namespace Config {
           // to satisfy the type checker
           result.agent ??= {}
           result.mode ??= {}
+          result.modes ??= {}
           result.plugin ??= []
         }
       }
@@ -500,6 +502,30 @@ export namespace Config {
     })
   export type Agent = z.infer<typeof Agent>
 
+  export const Mode = z
+    .object({
+      id: z.string().describe("Mode identifier"),
+      name: z.string().describe("Mode display name"),
+      description: z.string().optional(),
+      icon: z.string().optional().describe("Icon name for UI display"),
+      color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color format")
+        .optional()
+        .describe("Hex color code for the mode (e.g., #FF5733)"),
+      provider: z.string().optional().describe("Provider override for this mode"),
+      default_agent: z.string().optional().describe("Default agent to use in this mode"),
+      allowed_agents: z.array(z.string()).optional().describe("Allowlist of agent names for this mode"),
+      disabled_agents: z.array(z.string()).optional().describe("Blocklist of agent names for this mode"),
+      requires_plugins: z.array(z.string()).optional().describe("Plugins required for this mode"),
+      overrides: z.record(z.string(), z.any()).optional().describe("Mode-specific overrides"),
+    })
+    .catchall(z.any())
+    .meta({
+      ref: "ModeConfig",
+    })
+  export type Mode = z.infer<typeof Mode>
+
   export const Server = z
     .object({
       port: z.number().int().positive().optional().describe("Port to listen on"),
@@ -656,6 +682,10 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration, see https://opencode.ai/docs/agent"),
+      modes: z
+        .record(z.string(), Mode)
+        .optional()
+        .describe("Mode configuration for the app UI"),
       provider: z
         .record(z.string(), Provider)
         .optional()

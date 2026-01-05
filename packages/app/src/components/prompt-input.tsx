@@ -29,6 +29,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { SettingsPopover } from "@/components/settings-popover"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
+import { ModeSelector } from "@/components/mode-selector"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
 import { persisted } from "@/utils/persist"
@@ -350,8 +351,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   type AtOption = { type: "agent"; name: string; display: string } | { type: "file"; path: string; display: string }
 
   const agentList = createMemo(() =>
-    sync.data.agent
-      .filter((agent) => !agent.hidden && agent.mode !== "primary")
+    local.mode
+      .filterAgents(sync.data.agent.filter((agent) => !agent.hidden && agent.mode !== "primary"))
       .map((agent): AtOption => ({ type: "agent", name: agent.name, display: agent.name })),
   )
 
@@ -1557,6 +1558,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
+                <ModeSelector />
                 <DropdownMenu placement="top-start">
                   <DropdownMenu.Trigger>
                     <TooltipKeybind placement="top" title="Cycle agent (Tab)" keybind={command.keybind("agent.cycle")}>
