@@ -173,12 +173,17 @@ export type ToolInfo = {
 }
 
 export function getToolInfo(tool: string, input: any = {}): ToolInfo {
-  switch (tool) {
+  // Helper to get property with both camelCase and snake_case support
+  const get = (camel: string, snake: string) => input[camel] ?? input[snake]
+  const filePath = get("filePath", "file_path")
+  const subagentType = get("subagentType", "subagent_type")
+
+  switch (tool.toLowerCase()) {
     case "read":
       return {
         icon: "glasses",
         title: "Read",
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: filePath ? getFilename(filePath) : undefined,
       }
     case "list":
       return {
@@ -207,7 +212,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
     case "task":
       return {
         icon: "task",
-        title: `${input.subagent_type || "task"} Agent`,
+        title: `${subagentType || "task"} Agent`,
         subtitle: input.description,
       }
     case "bash":
@@ -220,13 +225,13 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       return {
         icon: "code-lines",
         title: "Edit",
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: filePath ? getFilename(filePath) : undefined,
       }
     case "write":
       return {
         icon: "code-lines",
         title: "Write",
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: filePath ? getFilename(filePath) : undefined,
       }
     case "todowrite":
       return {
@@ -445,7 +450,8 @@ export function registerTool(input: { name: string; render?: ToolComponent }) {
 }
 
 export function getTool(name: string) {
-  return state[name]?.render
+  // Try exact match first, then lowercase for Claude Code compatibility
+  return state[name]?.render ?? state[name.toLowerCase()]?.render
 }
 
 export const ToolRegistry = {
@@ -592,9 +598,15 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   )
 }
 
+// Helper to get property with both camelCase and snake_case support (for Claude Code compatibility)
+function getInputProp(input: Record<string, any>, camel: string, snake: string) {
+  return input[camel] ?? input[snake]
+}
+
 ToolRegistry.register({
   name: "read",
   render(props) {
+    const filePath = getInputProp(props.input, "filePath", "file_path")
     const args: string[] = []
     if (props.input.offset) args.push("offset=" + props.input.offset)
     if (props.input.limit) args.push("limit=" + props.input.limit)
@@ -604,7 +616,7 @@ ToolRegistry.register({
         icon="glasses"
         trigger={{
           title: "Read",
-          subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
+          subtitle: filePath ? getFilename(filePath) : "",
           args,
         }}
       />
@@ -799,7 +811,7 @@ ToolRegistry.register({
                     icon="task"
                     defaultOpen={true}
                     trigger={{
-                      title: `${props.input.subagent_type || props.tool} Agent`,
+                      title: `${getInputProp(props.input, "subagentType", "subagent_type") || props.tool} Agent`,
                       titleClass: "capitalize",
                       subtitle: props.input.description,
                     }}
@@ -828,7 +840,7 @@ ToolRegistry.register({
               icon="task"
               defaultOpen={true}
               trigger={{
-                title: `${props.input.subagent_type || props.tool} Agent`,
+                title: `${getInputProp(props.input, "subagentType", "subagent_type") || props.tool} Agent`,
                 titleClass: "capitalize",
                 subtitle: props.input.description,
               }}
@@ -890,7 +902,10 @@ ToolRegistry.register({
   name: "edit",
   render(props) {
     const diffComponent = useDiffComponent()
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
+    const filePath = getInputProp(props.input, "filePath", "file_path")
+    const oldString = getInputProp(props.input, "oldString", "old_string")
+    const newString = getInputProp(props.input, "newString", "new_string")
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, filePath))
     return (
       <BasicTool
         {...props}
@@ -900,10 +915,10 @@ ToolRegistry.register({
             <div data-slot="message-part-title-area">
               <div data-slot="message-part-title">Edit</div>
               <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                <Show when={filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(filePath!)}</span>
                 </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+                <span data-slot="message-part-filename">{getFilename(filePath ?? "")}</span>
               </div>
             </div>
             <div data-slot="message-part-actions">
@@ -914,19 +929,19 @@ ToolRegistry.register({
           </div>
         }
       >
-        <Show when={props.metadata.filediff?.path || props.input.filePath}>
+        <Show when={props.metadata.filediff?.path || filePath}>
           <div data-component="edit-content">
             <Dynamic
               component={diffComponent}
               before={{
-                name: props.metadata?.filediff?.file || props.input.filePath,
-                contents: props.metadata?.filediff?.before || props.input.oldString,
-                cacheKey: checksum(props.metadata?.filediff?.before || props.input.oldString),
+                name: props.metadata?.filediff?.file || filePath,
+                contents: props.metadata?.filediff?.before || oldString,
+                cacheKey: checksum(props.metadata?.filediff?.before || oldString),
               }}
               after={{
-                name: props.metadata?.filediff?.file || props.input.filePath,
-                contents: props.metadata?.filediff?.after || props.input.newString,
-                cacheKey: checksum(props.metadata?.filediff?.after || props.input.newString),
+                name: props.metadata?.filediff?.file || filePath,
+                contents: props.metadata?.filediff?.after || newString,
+                cacheKey: checksum(props.metadata?.filediff?.after || newString),
               }}
             />
           </div>
@@ -941,7 +956,9 @@ ToolRegistry.register({
   name: "write",
   render(props) {
     const codeComponent = useCodeComponent()
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
+    const filePath = getInputProp(props.input, "filePath", "file_path")
+    const content = props.input.content
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, filePath))
     return (
       <BasicTool
         {...props}
@@ -951,24 +968,24 @@ ToolRegistry.register({
             <div data-slot="message-part-title-area">
               <div data-slot="message-part-title">Write</div>
               <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                <Show when={filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(filePath!)}</span>
                 </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+                <span data-slot="message-part-filename">{getFilename(filePath ?? "")}</span>
               </div>
             </div>
             <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
           </div>
         }
       >
-        <Show when={props.input.content}>
+        <Show when={content}>
           <div data-component="write-content">
             <Dynamic
               component={codeComponent}
               file={{
-                name: props.input.filePath,
-                contents: props.input.content,
-                cacheKey: checksum(props.input.content),
+                name: filePath,
+                contents: content,
+                cacheKey: checksum(content),
               }}
               overflow="scroll"
             />

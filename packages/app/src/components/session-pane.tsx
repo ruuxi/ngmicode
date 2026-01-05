@@ -150,7 +150,7 @@ function PaneContent(props: ActivePaneProps) {
 
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
-    stepsExpanded: true,
+    stepsExpanded: false,
   })
 
   // Header overlay visibility state
@@ -203,9 +203,12 @@ function PaneContent(props: ActivePaneProps) {
   createEffect(
     on(
       () => isWorking(),
-      (working) => {
+      (working, prev) => {
         if (working) {
           setStore("stepsExpanded", true)
+        } else if (prev) {
+          // Collapse when work finishes
+          setStore("stepsExpanded", false)
         }
       },
     ),

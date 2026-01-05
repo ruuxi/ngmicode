@@ -270,7 +270,9 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const result = Binary.search(store.session, event.properties.info.id, (s) => s.id)
-        if (event.properties.info.time.archived) {
+        const isArchived = !!event.properties.info.time?.archived
+        // If archived, remove from store if present
+        if (isArchived) {
           if (result.found) {
             setStore(
               "session",
@@ -281,16 +283,20 @@ function createGlobalSync() {
           }
           break
         }
+        // If found and not archived, update it
         if (result.found) {
           setStore("session", result.index, reconcile(event.properties.info))
           break
         }
-        setStore(
-          "session",
-          produce((draft) => {
-            draft.splice(result.index, 0, event.properties.info)
-          }),
-        )
+        // Only insert if not archived (defensive check)
+        if (!isArchived) {
+          setStore(
+            "session",
+            produce((draft) => {
+              draft.splice(result.index, 0, event.properties.info)
+            }),
+          )
+        }
         break
       }
       case "session.diff":

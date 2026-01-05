@@ -338,7 +338,7 @@ export default function Page() {
     activeDraggable: undefined as string | undefined,
     activeTerminalDraggable: undefined as string | undefined,
     userInteracted: false,
-    stepsExpanded: true,
+    stepsExpanded: false,
     mobileStepsExpanded: {} as Record<string, boolean>,
     messageId: undefined as string | undefined,
   })
@@ -377,11 +377,6 @@ export default function Page() {
   let inputRef!: HTMLDivElement
 
   createEffect(() => {
-    if (!params.id) return
-    sync.session.sync(params.id)
-  })
-
-  createEffect(() => {
     if (layout.terminal.opened()) {
       if (terminal.all().length === 0) {
         terminal.new()
@@ -406,44 +401,16 @@ export default function Page() {
   createEffect(
     on(
       () => params.id,
-      (id) => {
-        const status = sync.data.session_status[id ?? ""] ?? idle
-        batch(() => {
-          setStore("userInteracted", false)
-          setStore("stepsExpanded", status.type !== "idle")
-        })
+      () => {
+        setStore("userInteracted", false)
+        // Steps stay collapsed by default
       },
     ),
   )
 
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
-  createEffect(
-    on(
-      () => status().type,
-      (type) => {
-        if (type !== "idle") return
-        batch(() => {
-          setStore("userInteracted", false)
-          setStore("stepsExpanded", false)
-        })
-      },
-      { defer: true },
-    ),
-  )
-
   const working = createMemo(() => status().type !== "idle" && activeMessage()?.id === lastUserMessage()?.id)
-
-  createRenderEffect((prev) => {
-    const isWorking = working()
-    if (!prev && isWorking) {
-      setStore("stepsExpanded", true)
-    }
-    if (prev && !isWorking && !store.userInteracted) {
-      setStore("stepsExpanded", false)
-    }
-    return isWorking
-  }, working())
 
   command.register(() => [
     {

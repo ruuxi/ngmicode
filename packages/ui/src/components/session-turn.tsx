@@ -11,8 +11,9 @@ import { useDiffComponent } from "../context/diff"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { Binary } from "@opencode-ai/util/binary"
-import { createEffect, createMemo, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { getToolInfo } from "./message-part"
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
@@ -72,6 +73,82 @@ function same<T>(a: readonly T[], b: readonly T[]) {
   if (a === b) return true
   if (a.length !== b.length) return false
   return a.every((x, i) => x === b[i])
+}
+
+function StepsCarousel(props: {
+  toolParts: { part: ToolPart; message: AssistantMessage }[]
+  totalCount: number
+  working: boolean
+  status: string | undefined
+  duration: string
+  onToggle: () => void
+}) {
+  const [animatingIndex, setAnimatingIndex] = createSignal<number | null>(null)
+  const [prevLength, setPrevLength] = createSignal(0)
+
+  // Track when new tools are added and trigger animation
+  createEffect(() => {
+    const currentLength = props.toolParts.length
+    const prev = prevLength()
+
+    if (currentLength > prev && prev > 0) {
+      // New tool was added, animate the carousel
+      setAnimatingIndex(currentLength - 1)
+      const timeout = setTimeout(() => setAnimatingIndex(null), 300)
+      onCleanup(() => clearTimeout(timeout))
+    }
+
+    setPrevLength(currentLength)
+  })
+
+  // Get the last 2 tools to display
+  const visibleTools = createMemo(() => {
+    const parts = props.toolParts
+    if (parts.length === 0) return []
+    if (parts.length === 1) return [parts[0]]
+    return [parts[parts.length - 2], parts[parts.length - 1]]
+  })
+
+  const hiddenCount = createMemo(() => Math.max(0, props.totalCount - 2))
+
+  return (
+    <div data-component="steps-carousel" onClick={props.onToggle}>
+      <div data-slot="steps-carousel-track" data-animating={animatingIndex() !== null}>
+        <For each={visibleTools()}>
+          {(item, index) => {
+            const info = () => getToolInfo(item.part.tool, item.part.state?.input)
+            const isNew = () => animatingIndex() !== null && index() === visibleTools().length - 1
+            return (
+              <div data-slot="steps-carousel-item" data-new={isNew()}>
+                <Icon name={info().icon} size="small" />
+                <span data-slot="steps-carousel-title">{info().title}</span>
+                <Show when={info().subtitle}>
+                  <span data-slot="steps-carousel-subtitle">{info().subtitle}</span>
+                </Show>
+              </div>
+            )
+          }}
+        </For>
+      </div>
+      <div data-slot="steps-carousel-actions">
+        <Show when={hiddenCount() > 0}>
+          <div data-slot="steps-carousel-count">+{hiddenCount()} more</div>
+        </Show>
+        <div data-slot="steps-carousel-toggle">
+          <Show when={props.working}>
+            <Spinner />
+            <span>{props.status ?? "Working"}</span>
+          </Show>
+          <Show when={!props.working}>
+            <span>Show steps</span>
+          </Show>
+          <span>·</span>
+          <span>{props.duration}</span>
+          <Icon name="chevron-grabber-vertical" size="small" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function AssistantMessageItem(props: {
@@ -227,6 +304,21 @@ export function SessionTurn(
       }
     }
     return false
+  })
+
+  // Collect all tool parts for the carousel
+  const allToolParts = createMemo(() => {
+    const result: { part: ToolPart; message: AssistantMessage }[] = []
+    for (const m of assistantMessages()) {
+      const msgParts = data.store.part[m.id]
+      if (!msgParts) continue
+      for (const p of msgParts) {
+        if (p?.type === "tool") {
+          result.push({ part: p as ToolPart, message: m })
+        }
+      }
+    }
+    return result
   })
 
   const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
@@ -475,8 +567,8 @@ export function SessionTurn(
                     <div data-slot="session-turn-message-content">
                       <Message message={msg()} parts={parts()} />
                     </div>
-                    {/* Trigger (sticky unless disableSticky) */}
-                    <Show when={working() || hasSteps()}>
+                    {/* Trigger (sticky unless disableSticky) - only when expanded */}
+                    <Show when={props.stepsExpanded && (working() || hasSteps())}>
                       <div
                         ref={(el) => setStore("stickyTriggerRef", el)}
                         data-slot="session-turn-response-trigger"
@@ -518,7 +610,7 @@ export function SessionTurn(
                         </Button>
                       </div>
                     </Show>
-                    {/* Response */}
+                    {/* Expanded Steps */}
                     <Show when={props.stepsExpanded && assistantMessages().length > 0}>
                       <div data-slot="session-turn-collapsible-content-inner">
                         <For each={assistantMessages()}>
@@ -537,6 +629,17 @@ export function SessionTurn(
                           </Card>
                         </Show>
                       </div>
+                    </Show>
+                    {/* Collapsed Steps Carousel */}
+                    <Show when={!props.stepsExpanded && (working() || allToolParts().length > 0)}>
+                      <StepsCarousel
+                        toolParts={allToolParts()}
+                        totalCount={allToolParts().length}
+                        working={working()}
+                        status={store.status}
+                        duration={store.duration}
+                        onToggle={props.onStepsExpandedToggle ?? (() => {})}
+                      />
                     </Show>
                     <Show when={!props.stepsExpanded && permissionParts().length > 0}>
                       <div data-slot="session-turn-permission-parts">

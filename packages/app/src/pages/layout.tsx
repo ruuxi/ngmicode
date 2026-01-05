@@ -279,7 +279,7 @@ export default function Layout(props: ParentProps) {
   function projectSessions(directory: string) {
     if (!directory) return []
     const sessions = globalSync.child(directory)[0].session.toSorted(sortSessions)
-    return (sessions ?? []).filter((s) => !s.parentID)
+    return (sessions ?? []).filter((s) => !s.parentID && !s.time?.archived)
   }
 
   const currentSessions = createMemo(() => {
@@ -786,7 +786,7 @@ export default function Layout(props: ParentProps) {
     const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
     const [store, setProjectStore] = globalSync.child(props.project.worktree)
     const sessions = createMemo(() => store.session.toSorted(sortSessions))
-    const rootSessions = createMemo(() => sessions().filter((s) => !s.parentID))
+    const rootSessions = createMemo(() => sessions().filter((s) => !s.parentID && !s.time?.archived))
     const hasMoreSessions = createMemo(() => store.session.length >= store.limit)
     const loadMoreSessions = async () => {
       setProjectStore("limit", (limit) => limit + 5)
