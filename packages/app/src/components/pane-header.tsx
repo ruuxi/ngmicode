@@ -57,10 +57,7 @@ export function PaneHeader(props: PaneHeaderProps) {
   }
 
   return (
-    <header
-      class="shrink-0 bg-background-base border-b border-border-accent-base flex flex-col"
-      onClick={() => multiPane.setFocused(props.paneId)}
-    >
+    <header class="shrink-0 bg-background-base border-b border-border-accent-base flex flex-col">
       <div class="h-8 flex items-center px-2 gap-1">
         <div class="flex items-center gap-1 min-w-0 flex-1">
           <Select

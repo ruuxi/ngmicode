@@ -1,4 +1,4 @@
-import { Show, createMemo, createEffect, on, For } from "solid-js"
+import { Show, createMemo, createEffect, on, For, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
@@ -153,6 +153,31 @@ function PaneContent(props: ActivePaneProps) {
     stepsExpanded: true,
   })
 
+  // Header overlay visibility state
+  const [isHovering, setIsHovering] = createSignal(false)
+  const [isNearTop, setIsNearTop] = createSignal(false)
+  const [headerHasFocus, setHeaderHasFocus] = createSignal(false)
+  const [isOverHeader, setIsOverHeader] = createSignal(false)
+  let containerRef: HTMLDivElement | undefined
+
+  const isFocused = createMemo(() => multiPane.focusedPaneId() === props.paneId)
+
+  // Show header when: (mouse over header) OR (not focused AND hovering) OR (near top) OR (header has focus-within)
+  const showHeader = createMemo(() => {
+    if (headerHasFocus()) return true
+    if (isOverHeader()) return true
+    if (!isFocused() && isHovering()) return true
+    if (isNearTop()) return true
+    return false
+  })
+
+  function handleMouseMove(e: MouseEvent) {
+    if (!containerRef) return
+    const rect = containerRef.getBoundingClientRect()
+    const relativeY = e.clientY - rect.top
+    setIsNearTop(relativeY <= 40)
+  }
+
   const messages = createMemo(() => (props.sessionId ? (sync.data.message[props.sessionId] ?? []) : []))
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
@@ -199,25 +224,32 @@ function PaneContent(props: ActivePaneProps) {
 
   function handleSessionChange(sessionId: string | undefined) {
     multiPane.updatePane(props.paneId, { sessionId })
+    multiPane.setFocused(props.paneId)
   }
 
   function handleDirectoryChange(directory: string) {
     multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
+    multiPane.setFocused(props.paneId)
   }
 
   function handleClose() {
     multiPane.removePane(props.paneId)
   }
 
-  const isFocused = createMemo(() => multiPane.focusedPaneId() === props.paneId)
-
   return (
     <div
+      ref={containerRef}
       class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
         "opacity-60": !isFocused(),
       }}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => {
+        setIsHovering(false)
+        setIsNearTop(false)
+      }}
+      onMouseMove={handleMouseMove}
       onMouseDown={(e) => {
         // Only focus if clicking non-interactive elements
         const target = e.target as HTMLElement
@@ -227,14 +259,37 @@ function PaneContent(props: ActivePaneProps) {
         }
       }}
     >
-      <PaneHeader
-        paneId={props.paneId}
-        directory={props.directory}
-        sessionId={props.sessionId}
-        onSessionChange={handleSessionChange}
-        onDirectoryChange={handleDirectoryChange}
-        onClose={handleClose}
-      />
+      {/* Header overlay */}
+      <div
+        class="absolute top-0 left-0 right-0 z-10 transition-opacity duration-150"
+        classList={{
+          "opacity-100 pointer-events-auto": showHeader(),
+          "opacity-0 pointer-events-none": !showHeader(),
+        }}
+        onMouseEnter={() => setIsOverHeader(true)}
+        onMouseLeave={() => setIsOverHeader(false)}
+        onMouseDown={(e) => {
+          // Prevent container's onMouseDown from firing - don't focus when interacting with header
+          e.stopPropagation()
+        }}
+        onFocusIn={() => setHeaderHasFocus(true)}
+        onFocusOut={(e) => {
+          // Only clear focus if focus is leaving the header entirely
+          const relatedTarget = e.relatedTarget as HTMLElement | null
+          if (!e.currentTarget.contains(relatedTarget)) {
+            setHeaderHasFocus(false)
+          }
+        }}
+      >
+        <PaneHeader
+          paneId={props.paneId}
+          directory={props.directory}
+          sessionId={props.sessionId}
+          onSessionChange={handleSessionChange}
+          onDirectoryChange={handleDirectoryChange}
+          onClose={handleClose}
+        />
+      </div>
 
       <div class="flex-1 min-h-0 flex flex-col">
         <div class="flex-1 min-h-0 relative bg-background-stronger">
@@ -266,7 +321,7 @@ function PaneContent(props: ActivePaneProps) {
                   onUserInteracted={() => {}}
                   classes={{
                     root: "pb-4 flex-1 min-w-0",
-                    content: "pb-4",
+                    content: "pb-4 pt-8",
                     container: "w-full px-3 " + (visibleUserMessages().length > 1 ? "pl-12" : ""),
                   }}
                 />
@@ -311,9 +366,32 @@ function EmptyPaneContent(props: { paneId: string }) {
   const layout = useLayout()
   const isFocused = createMemo(() => multiPane.focusedPaneId() === props.paneId)
 
+  // Header overlay visibility state
+  const [isHovering, setIsHovering] = createSignal(false)
+  const [isNearTop, setIsNearTop] = createSignal(false)
+  const [headerHasFocus, setHeaderHasFocus] = createSignal(false)
+  const [isOverHeader, setIsOverHeader] = createSignal(false)
+  let containerRef: HTMLDivElement | undefined
+
+  const showHeader = createMemo(() => {
+    if (headerHasFocus()) return true
+    if (isOverHeader()) return true
+    if (!isFocused() && isHovering()) return true
+    if (isNearTop()) return true
+    return false
+  })
+
+  function handleMouseMove(e: MouseEvent) {
+    if (!containerRef) return
+    const rect = containerRef.getBoundingClientRect()
+    const relativeY = e.clientY - rect.top
+    setIsNearTop(relativeY <= 40)
+  }
+
   function handleSelectProject(directory: string) {
     layout.projects.open(directory)
     multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
+    multiPane.setFocused(props.paneId)
   }
 
   function handleClose() {
@@ -322,28 +400,57 @@ function EmptyPaneContent(props: { paneId: string }) {
 
   return (
     <div
+      ref={containerRef}
       class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       classList={{
         "ring-1 ring-border-accent-base": isFocused(),
         "opacity-60": !isFocused(),
       }}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => {
+        setIsHovering(false)
+        setIsNearTop(false)
+      }}
+      onMouseMove={handleMouseMove}
       onMouseDown={() => multiPane.setFocused(props.paneId)}
     >
-      <header
-        class="h-8 shrink-0 bg-background-base border-b flex items-center px-2 gap-1 justify-between"
+      {/* Header overlay */}
+      <div
+        class="absolute top-0 left-0 right-0 z-10 transition-opacity duration-150"
         classList={{
-          "border-border-accent-base": isFocused(),
-          "border-border-weak-base": !isFocused(),
+          "opacity-100 pointer-events-auto": showHeader(),
+          "opacity-0 pointer-events-none": !showHeader(),
+        }}
+        onMouseEnter={() => setIsOverHeader(true)}
+        onMouseLeave={() => setIsOverHeader(false)}
+        onMouseDown={(e) => {
+          // Prevent container's onMouseDown from firing - don't focus when interacting with header
+          e.stopPropagation()
+        }}
+        onFocusIn={() => setHeaderHasFocus(true)}
+        onFocusOut={(e) => {
+          const relatedTarget = e.relatedTarget as HTMLElement | null
+          if (!e.currentTarget.contains(relatedTarget)) {
+            setHeaderHasFocus(false)
+          }
         }}
       >
-        <div class="text-12-regular text-text-weak">New Tab</div>
-        <div class="flex items-center">
-          <IconButton icon="plus" variant="ghost" onClick={() => multiPane.addPane()} />
-          <Show when={multiPane.panes().length > 1}>
-            <IconButton icon="close" variant="ghost" onClick={handleClose} />
-          </Show>
-        </div>
-      </header>
+        <header
+          class="h-8 shrink-0 bg-background-base border-b flex items-center px-2 gap-1 justify-between"
+          classList={{
+            "border-border-accent-base": isFocused(),
+            "border-border-weak-base": !isFocused(),
+          }}
+        >
+          <div class="text-12-regular text-text-weak">New Tab</div>
+          <div class="flex items-center">
+            <IconButton icon="plus" variant="ghost" onClick={() => multiPane.addPane()} />
+            <Show when={multiPane.panes().length > 1}>
+              <IconButton icon="close" variant="ghost" onClick={handleClose} />
+            </Show>
+          </div>
+        </header>
+      </div>
       <div class="flex-1 min-h-0 bg-background-stronger">
         <PaneHome onSelectProject={handleSelectProject} />
       </div>
