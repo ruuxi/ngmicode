@@ -1,5 +1,5 @@
 import { useMarked } from "../context/marked"
-import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
+import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps } from "solid-js"
 
 const MARKDOWN_CACHE_LIMIT = 200
 const markdownCache = new Map<string, string>()
@@ -23,6 +23,15 @@ function setCachedMarkdown(text: string, html: string) {
   }
 }
 
+function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 
 export function Markdown(
   props: ComponentProps<"div"> & {
@@ -33,6 +42,11 @@ export function Markdown(
 ) {
   const [local, others] = splitProps(props, ["text", "class", "classList"])
   const marked = useMarked()
+  const fallbackHtml = createMemo(() => {
+    const text = local.text ?? ""
+    if (!text) return ""
+    return `<p>${escapeHtml(text).replace(/\n/g, "<br />")}</p>`
+  })
   const [html, setHtml] = createSignal<string | undefined>(getCachedMarkdown(local.text))
 
   createEffect(() => {
@@ -72,7 +86,7 @@ export function Markdown(
         ...(local.classList ?? {}),
         [local.class ?? ""]: !!local.class,
       }}
-      innerHTML={html() ?? ""}
+      innerHTML={html() ?? fallbackHtml()}
       {...others}
     />
   )
