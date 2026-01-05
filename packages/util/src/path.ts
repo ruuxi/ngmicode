@@ -18,6 +18,10 @@ export function truncateDirectoryPrefix(path: string): string {
 
   // Common prefixes to remove (order matters - more specific first)
   const prefixes = [
+    // WSL paths (\\wsl.localhost\Ubuntu\home\user\ or //wsl.localhost/Ubuntu/home/user/)
+    /^\/\/wsl\.localhost\/[^/]+\/home\/[^/]+\//i,
+    // WSL$ paths (\\wsl$\Ubuntu\home\user\)
+    /^\/\/wsl\$\/[^/]+\/home\/[^/]+\//i,
     // Windows with drive letter (C:/Users/... or c:/Users/...)
     /^[a-zA-Z]:\/[Uu]sers\/[^/]+\//,
     // Windows MSYS/Git Bash style (/c/Users/...)
