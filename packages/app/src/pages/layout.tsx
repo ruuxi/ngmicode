@@ -513,6 +513,13 @@ export default function Layout(props: ParentProps) {
     else navigate("/")
   }
 
+  function closeProjectDeferred(directory: string) {
+    // Let the dropdown menu close before unmounting its trigger to avoid popper errors.
+    queueMicrotask(() => {
+      setTimeout(() => closeProject(directory), 0)
+    })
+  }
+
   async function chooseProject() {
     function resolve(result: string | string[] | null) {
       if (Array.isArray(result)) {
@@ -834,7 +841,7 @@ export default function Layout(props: ParentProps) {
                         >
                           <DropdownMenu.ItemLabel>Edit project</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
-                        <DropdownMenu.Item onSelect={() => closeProject(props.project.worktree)}>
+                        <DropdownMenu.Item onSelect={() => closeProjectDeferred(props.project.worktree)}>
                           <DropdownMenu.ItemLabel>Close project</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>

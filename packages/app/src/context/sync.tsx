@@ -99,18 +99,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             )
 
             localSetStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
-            localSetStore(
-              "message",
-              sessionID,
-              reconcile(
-                (messages.data ?? [])
-                  .map((x) => x.info)
-                  .filter((m) => !!m?.id)
-                  .slice()
-                  .sort((a, b) => a.id.localeCompare(b.id)),
-                { key: "id" },
-              ),
-            )
+            const serverMessages = (messages.data ?? [])
+              .map((x) => x.info)
+              .filter((m) => !!m?.id)
+              .slice()
+              .sort((a, b) => a.id.localeCompare(b.id))
+
+            localSetStore("message", sessionID, reconcile(serverMessages, { key: "id" }))
 
             for (const message of messages.data ?? []) {
               if (!message?.info?.id) continue

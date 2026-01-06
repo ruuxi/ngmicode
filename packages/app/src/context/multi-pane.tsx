@@ -69,14 +69,17 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       focusedPaneId: createMemo(() => store.focusedPaneId),
       focusedPane,
 
-      addPane(directory?: string, sessionId?: string) {
+      addPane(directory?: string, sessionId?: string, options?: { focus?: boolean }) {
         if (store.panes.length >= MAX_TOTAL_PANES) {
           return undefined
         }
         const id = generatePaneId()
         const pane: PaneConfig = { id, directory, sessionId }
         setStore("panes", [...store.panes, pane])
-        setStore("focusedPaneId", id)
+        const shouldFocus = options?.focus ?? true
+        if (shouldFocus) {
+          setStore("focusedPaneId", id)
+        }
         // Use length-1 because pages are 0-indexed (12 panes with perPage=12 should be page 0)
         const newPage = Math.floor((store.panes.length - 1) / MAX_PANES_PER_PAGE)
         if (newPage !== store.currentPage) {

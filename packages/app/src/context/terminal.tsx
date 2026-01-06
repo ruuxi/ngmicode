@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { batch, createMemo } from "solid-js"
+import { batch, createMemo, type Accessor } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { persisted } from "@/utils/persist"
@@ -19,7 +19,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   { paneId?: string }
 >({
   name: "Terminal",
-  init: (props) => createTerminalContext(props?.paneId),
+  init: (props) => createTerminalContext(() => props?.paneId),
 })
 
 type TerminalEntry = {
@@ -35,15 +35,16 @@ function createDefaultEntry(): TerminalEntry {
   return { all: [] }
 }
 
-function createTerminalContext(paneId?: string) {
+function createTerminalContext(paneId?: string | Accessor<string | undefined>) {
   const sdk = useSDK()
   const params = useParams()
+  const getPaneId = typeof paneId === "function" ? paneId : () => paneId
 
   // For pane-based terminals, don't persist (paneIds are random and would cause orphaned entries)
   // For single session view, persist by directory/session
-  if (paneId) {
-    return createNonPersistedTerminalContext(sdk)
-  }
+  const [paneStore, setPaneStore] = createStore<TerminalStore>({
+    entries: {},
+  })
 
   const key = createMemo(() => `${params.dir}/terminal${params.id ? "/" + params.id : ""}.v1`)
   const [store, setStore, _, ready] = persisted(
@@ -53,22 +54,33 @@ function createTerminalContext(paneId?: string) {
     }),
   )
 
-  const currentEntry = createMemo(() => store.entries[key()] ?? createDefaultEntry())
+  const currentEntry = createMemo(() => {
+    const pane = getPaneId()
+    if (pane) {
+      return paneStore.entries[pane] ?? createDefaultEntry()
+    }
+    return store.entries[key()] ?? createDefaultEntry()
+  })
+
   const updateEntry = (updater: (entry: TerminalEntry) => TerminalEntry, targetKey?: string) => {
+    const pane = getPaneId()
+    if (pane) {
+      const keyToUse = targetKey ?? pane
+      const base = paneStore.entries[keyToUse] ?? createDefaultEntry()
+      setPaneStore("entries", keyToUse, updater(base))
+      return
+    }
     const keyToUse = targetKey ?? key()
     const base = store.entries[keyToUse] ?? createDefaultEntry()
     setStore("entries", keyToUse, updater(base))
   }
 
-  return createTerminalMethods(sdk, () => currentEntry(), updateEntry, ready, () => key())
-}
-
-function createNonPersistedTerminalContext(sdk: ReturnType<typeof useSDK>) {
-  const [store, setStore] = createStore<TerminalEntry>(createDefaultEntry())
-  const updateEntry = (updater: (entry: TerminalEntry) => TerminalEntry) => {
-    setStore(updater(store))
+  const isReady = () => {
+    if (getPaneId()) return true
+    return ready()
   }
-  return createTerminalMethods(sdk, () => store, updateEntry, () => true, () => "")
+
+  return createTerminalMethods(sdk, () => currentEntry(), updateEntry, isReady, () => getPaneId() ?? key())
 }
 
 function createTerminalMethods(

@@ -1,5 +1,5 @@
-import { Show, createMemo, onMount, createEffect, on, For, onCleanup, createSignal } from "solid-js"
-import { useSearchParams, useNavigate } from "@solidjs/router"
+import { Show, createMemo, onMount, createEffect, on, For, onCleanup } from "solid-js"
+import { useSearchParams } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
@@ -20,7 +20,6 @@ import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
-import { base64Encode } from "@opencode-ai/util/encode"
 
 const MAX_TERMINAL_HEIGHT = 200
 
@@ -91,15 +90,19 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
 
   return (
     <div
-      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150 ring-inset"
+      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       classList={{
-        "ring-1": true,
-        "ring-border-accent-base": props.isFocused(),
-        "ring-border-weak-base": !props.isFocused(),
         "opacity-60": !props.isFocused(),
       }}
       onMouseDown={handleMouseDown}
     >
+      <div
+        class="pointer-events-none absolute inset-0 z-30 border"
+        classList={{
+          "border-border-accent-base": props.isFocused(),
+          "border-border-weak-base": !props.isFocused(),
+        }}
+      />
       <HomeScreen
         hideLogo={hideLogo()}
         onProjectSelected={handleProjectSelected}
@@ -122,41 +125,74 @@ function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) 
     multiPane.updatePane(props.paneId, { sessionId })
   }
 
-  // Restore settings from cache on mount (before render to avoid flicker)
-  const cached = paneCache.get(props.paneId)
-  if (cached) {
+  function restorePaneState(paneId: string) {
+    const cached = paneCache.get(paneId)
+    if (!cached) return
     if (cached.agent) local.agent.set(cached.agent)
     if (cached.model) local.model.set(cached.model)
     if (cached.variant !== undefined) local.model.variant.set(cached.variant)
-    if (cached.prompt) prompt.set(cached.prompt)
+    if (cached.prompt && !prompt.dirty()) prompt.set(cached.prompt)
   }
+
+  type PaneSnapshot = {
+    prompt?: Prompt
+    promptDirty: boolean
+    agent?: string
+    model?: { providerID: string; modelID: string }
+    variant?: string
+  }
+
+  const paneSnapshots = new Map<string, PaneSnapshot>()
+
+  function snapshotPaneState(): PaneSnapshot {
+    const currentPrompt = prompt.current()
+    const currentAgent = local.agent.current()
+    const currentModel = local.model.current()
+    return {
+      prompt: currentPrompt,
+      promptDirty: prompt.dirty(),
+      agent: currentAgent?.name,
+      model: currentModel ? { providerID: currentModel.provider.id, modelID: currentModel.id } : undefined,
+      variant: local.model.variant.current(),
+    }
+  }
+
+  function storePaneState(paneId: string, snapshot?: PaneSnapshot) {
+    const state = snapshot ?? snapshotPaneState()
+    const cache: PaneCache = paneCache.get(paneId) ?? {}
+    if (state.prompt && state.promptDirty) {
+      cache.prompt = state.prompt
+    }
+    if (state.agent) {
+      cache.agent = state.agent
+    }
+    if (state.model) {
+      cache.model = state.model
+    }
+    cache.variant = state.variant
+    paneCache.set(paneId, cache)
+  }
+
+  restorePaneState(props.paneId)
+
+  createEffect(() => {
+    paneSnapshots.set(props.paneId, snapshotPaneState())
+  })
+
+  createEffect(
+    on(
+      () => props.paneId,
+      (next, prev) => {
+        if (prev) storePaneState(prev, paneSnapshots.get(prev))
+        if (next) restorePaneState(next)
+      },
+      { defer: true },
+    ),
+  )
 
   // Save all settings to cache on cleanup (before unmount)
   onCleanup(() => {
-    const cache: PaneCache = {}
-
-    // Save prompt
-    const currentPrompt = prompt.current()
-    if (currentPrompt && prompt.dirty()) {
-      cache.prompt = currentPrompt
-    }
-
-    // Save agent
-    const currentAgent = local.agent.current()
-    if (currentAgent) {
-      cache.agent = currentAgent.name
-    }
-
-    // Save model
-    const currentModel = local.model.current()
-    if (currentModel) {
-      cache.model = { providerID: currentModel.provider.id, modelID: currentModel.id }
-    }
-
-    // Save variant
-    cache.variant = local.model.variant.current()
-
-    paneCache.set(props.paneId, cache)
+    storePaneState(props.paneId, paneSnapshots.get(props.paneId))
   })
 
   // Auto-focus prompt when component mounts
@@ -256,18 +292,17 @@ function GlobalPromptWrapper() {
   const multiPane = useMultiPane()
   const focused = createMemo(() => multiPane.focusedPane())
 
-  // Use keyed Show to remount providers when focused pane changes
   return (
-    <Show when={focused()} keyed>
+    <Show when={focused()}>
       {(pane) => (
-        <Show when={pane.directory}>
+        <Show when={pane().directory}>
           {(directory) => (
             <SDKProvider directory={directory()}>
               <SyncProvider>
                 <GlobalPromptSynced
-                  paneId={pane.id}
+                  paneId={pane().id}
                   directory={directory()}
-                  sessionId={pane.sessionId}
+                  sessionId={pane().sessionId}
                 />
               </SyncProvider>
             </SDKProvider>
@@ -281,11 +316,7 @@ function GlobalPromptWrapper() {
 function MultiPaneContent() {
   const multiPane = useMultiPane()
   const layout = useLayout()
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-
-  // Track when we're transitioning to single-pane view to prevent GlobalPromptWrapper remount
-  const [isTransitioningToSingle, setIsTransitioningToSingle] = createSignal(false)
 
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
   const hasPanes = createMemo(() => multiPane.panes().length > 0)
@@ -352,23 +383,6 @@ function MultiPaneContent() {
     ),
   )
 
-  // Auto-switch to single view when only 1 pane with a session remains
-  // Use defer to skip initial mount, only trigger when user closes panes
-  createEffect(
-    on(
-      () => multiPane.panes(),
-      (panes, prev) => {
-        // Only switch if we're reducing from multiple panes to 1
-        if (prev && prev.length > 1 && panes.length === 1 && panes[0].directory && panes[0].sessionId) {
-          // Mark transition to prevent GlobalPromptWrapper from remounting
-          // This avoids floating-ui errors when refs are invalidated during cleanup
-          setIsTransitioningToSingle(true)
-          navigate(`/${base64Encode(panes[0].directory)}/session/${panes[0].sessionId}`)
-        }
-      },
-    ),
-  )
-
   function handleAddFirstPane() {
     multiPane.addPane(getLastProject())
   }
@@ -421,10 +435,7 @@ function MultiPaneContent() {
             )
           }}
         />
-        {/* Hide GlobalPromptWrapper during transition to prevent floating-ui errors */}
-        <Show when={!isTransitioningToSingle()}>
-          <GlobalPromptWrapper />
-        </Show>
+        <GlobalPromptWrapper />
       </Show>
     </div>
   )

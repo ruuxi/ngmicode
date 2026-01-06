@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { batch, createMemo } from "solid-js"
+import { batch, createMemo, type Accessor } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { TextSelection } from "./local"
 import { persisted } from "@/utils/persist"
@@ -85,7 +85,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext<
   { paneId?: string }
 >({
   name: "Prompt",
-  init: (props) => createPromptContext(props?.paneId),
+  init: (props) => createPromptContext(() => props?.paneId),
 })
 
 type PromptEntry = {
@@ -104,14 +104,13 @@ function createDefaultEntry(): PromptEntry {
   }
 }
 
-function createPromptContext(paneId?: string) {
+function createPromptContext(paneId?: string | Accessor<string | undefined>) {
   const params = useParams()
+  const getPaneId = typeof paneId === "function" ? paneId : () => paneId
 
-  // For pane-based prompts, don't persist (paneIds are random and would cause orphaned entries)
-  // For single session view, persist by directory/session
-  if (paneId) {
-    return createNonPersistedPromptContext()
-  }
+  const [paneStore, setPaneStore] = createStore<PromptStore>({
+    entries: {},
+  })
 
   const key = createMemo(() => `${params.dir}/prompt${params.id ? "/" + params.id : ""}.v1`)
   const [store, setStore, _, ready] = persisted(
@@ -121,21 +120,31 @@ function createPromptContext(paneId?: string) {
     }),
   )
 
-  const currentEntry = createMemo(() => store.entries[key()] ?? createDefaultEntry())
+  const currentEntry = createMemo(() => {
+    const pane = getPaneId()
+    if (pane) {
+      return paneStore.entries[pane] ?? createDefaultEntry()
+    }
+    return store.entries[key()] ?? createDefaultEntry()
+  })
+
   const updateEntry = (updater: (entry: PromptEntry) => PromptEntry) => {
+    const pane = getPaneId()
+    if (pane) {
+      const base = paneStore.entries[pane] ?? createDefaultEntry()
+      setPaneStore("entries", pane, updater(base))
+      return
+    }
     const next = updater(currentEntry())
     setStore("entries", key(), next)
   }
 
-  return createPromptMethods(() => currentEntry(), updateEntry, ready)
-}
-
-function createNonPersistedPromptContext() {
-  const [store, setStore] = createStore<PromptEntry>(createDefaultEntry())
-  const updateEntry = (updater: (entry: PromptEntry) => PromptEntry) => {
-    setStore(updater(store))
+  const isReady = () => {
+    if (getPaneId()) return true
+    return ready()
   }
-  return createPromptMethods(() => store, updateEntry, () => true)
+
+  return createPromptMethods(() => currentEntry(), updateEntry, isReady)
 }
 
 function createPromptMethods(

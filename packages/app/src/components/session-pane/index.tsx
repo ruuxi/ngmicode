@@ -239,6 +239,7 @@ export function SessionPane(props: SessionPaneProps) {
   const hidePaneLogo = createMemo(
     () => props.mode === "multi" && !!multiPane && multiPane.panes().length > 1,
   )
+  const sessionTurnPadding = createMemo(() => (props.mode === "single" ? "pb-20" : "pb-0"))
 
   function focusPane() {
     if (props.mode !== "multi" || !props.paneId || !multiPane) return
@@ -297,8 +298,8 @@ export function SessionPane(props: SessionPaneProps) {
             onStepsExpandedToggle={() => setStore("stepsExpanded", (x) => !x)}
             onUserInteracted={() => setStore("userInteracted", true)}
             classes={{
-              root: "pb-20 flex-1 min-w-0",
-              content: "pb-20",
+              root: `${sessionTurnPadding()} flex-1 min-w-0`,
+              content: sessionTurnPadding(),
               container:
                 "w-full " +
                 (!showTabs()
@@ -316,14 +317,12 @@ export function SessionPane(props: SessionPaneProps) {
   // Multi mode container styles
   const multiContainerClass = () =>
     props.mode === "multi"
-      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150 ring-1 ring-inset"
+      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
       : "relative bg-background-base size-full overflow-hidden flex flex-col"
 
   const multiContainerClassList = () =>
     props.mode === "multi"
       ? {
-          "ring-border-accent-base": isFocused(),
-          "ring-border-weak-base": !isFocused(),
           "opacity-60": !isFocused(),
         }
       : {}
@@ -347,6 +346,16 @@ export function SessionPane(props: SessionPaneProps) {
       onMouseLeave={props.mode === "multi" ? headerOverlay.handleMouseLeave : undefined}
       onMouseMove={props.mode === "multi" ? headerOverlay.handleMouseMove : undefined}
     >
+      <Show when={props.mode === "multi"}>
+        <div
+          class="pointer-events-none absolute inset-0 z-30 border"
+          classList={{
+            "border-border-accent-base": isFocused(),
+            "border-border-weak-base": !isFocused(),
+          }}
+        />
+      </Show>
+
       {/* Header */}
       <Show when={props.mode === "single"}>
         <SessionPaneHeader
@@ -357,7 +366,7 @@ export function SessionPane(props: SessionPaneProps) {
       </Show>
       <Show when={props.mode === "multi"}>
         <div
-          class="absolute top-0 left-0 right-0 z-10 transition-opacity duration-150"
+          class="absolute top-0 left-0 right-0 z-40 transition-opacity duration-150"
           classList={{
             "opacity-100 pointer-events-auto": headerOverlay.showHeader(),
             "opacity-0 pointer-events-none": !headerOverlay.showHeader(),
