@@ -28,6 +28,7 @@ import type {
   ClaudePluginMarketplaceResponses,
   ClaudePluginMarketplaceSearchErrors,
   ClaudePluginMarketplaceSearchResponses,
+  ClaudePluginStatsResponses,
   ClaudePluginUninstallErrors,
   ClaudePluginUninstallResponses,
   CommandListResponses,
@@ -65,6 +66,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  MessageDiffResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -617,6 +619,25 @@ export class ClaudePlugin extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ClaudePluginAgentsResponses, unknown, ThrowOnError>({
       url: "/claude-plugin/agents",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin stats
+   *
+   * Get download statistics from the community plugin registry.
+   */
+  public stats<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ClaudePluginStatsResponses, unknown, ThrowOnError>({
+      url: "/claude-plugin/stats",
       ...options,
       ...params,
     })
@@ -1519,38 +1540,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Get session diff
-   *
-   * Get all file changes (diffs) made during this session.
-   */
-  public diff<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      messageID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "messageID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<SessionDiffResponses, SessionDiffErrors, ThrowOnError>({
-      url: "/session/{sessionID}/diff",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Summarize session
    *
    * Generate a concise summary of the session using AI compaction to preserve key information.
@@ -1644,6 +1633,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1662,6 +1652,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1676,6 +1667,36 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get session diff
+   *
+   * Get all file changes (diffs) made during this session.
+   */
+  public diff<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionDiffResponses, SessionDiffErrors, ThrowOnError>({
+      url: "/session/{sessionID}/diff",
+      ...options,
+      ...params,
     })
   }
 
@@ -1732,6 +1753,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1750,6 +1772,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1928,6 +1951,40 @@ export class Session extends HeyApiClient {
   }
 
   worktree = new Worktree({ client: this.client })
+}
+
+export class Message extends HeyApiClient {
+  /**
+   * Get message diff
+   *
+   * Get the file changes (diff) that resulted from a specific user message in the session.
+   */
+  public diff<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID?: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<MessageDiffResponses, unknown, ThrowOnError>({
+      url: "/session/{sessionID}/message/{messageID}/diff",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class Part extends HeyApiClient {
@@ -3048,6 +3105,8 @@ export class OpencodeClient extends HeyApiClient {
   vcs = new Vcs({ client: this.client })
 
   session = new Session({ client: this.client })
+
+  message = new Message({ client: this.client })
 
   part = new Part({ client: this.client })
 

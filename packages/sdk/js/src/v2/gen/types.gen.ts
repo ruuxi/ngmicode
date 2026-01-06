@@ -91,6 +91,7 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
+  thinking?: boolean
 }
 
 export type ProviderAuthError = {
@@ -451,35 +452,6 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type PermissionRequest = {
-  id: string
-  sessionID: string
-  permission: string
-  patterns: Array<string>
-  metadata: {
-    [key: string]: unknown
-  }
-  always: Array<string>
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "always" | "reject"
-  }
-}
-
 export type EventClaudePluginLoaded = {
   type: "claude-plugin.loaded"
   properties: {
@@ -506,6 +478,35 @@ export type EventClaudePluginDisabled = {
   type: "claude-plugin.disabled"
   properties: {
     pluginId: string
+  }
+}
+
+export type PermissionRequest = {
+  id: string
+  sessionID: string
+  permission: string
+  patterns: Array<string>
+  metadata: {
+    [key: string]: unknown
+  }
+  always: Array<string>
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "always" | "reject"
   }
 }
 
@@ -808,12 +809,12 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventClaudePluginLoaded
   | EventClaudePluginUnloaded
   | EventClaudePluginEnabled
   | EventClaudePluginDisabled
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionCompacted
@@ -907,16 +908,40 @@ export type ClaudePluginInstalled = {
 }
 
 export type ClaudePluginMarketplaceEntry = {
-  id: string
   name: string
-  version: string
+  id?: string
+  version?: string
   description?: string
-  author?: string
-  source: string
+  author?: {
+    name: string
+    email?: string
+  }
+  source:
+    | string
+    | {
+        source: "url"
+        url: string
+      }
   homepage?: string
+  repository?: string
   downloads?: number
   rating?: number
   tags?: Array<string>
+  category?: string
+  strict?: boolean
+  lspServers?: {
+    [key: string]: {
+      command: string
+      args?: Array<string>
+      extensionToLanguage?: {
+        [key: string]: string
+      }
+      env?: {
+        [key: string]: string
+      }
+      startupTimeout?: number
+    }
+  }
 }
 
 /**
@@ -1025,6 +1050,63 @@ export type AgentConfig = {
     | string
     | number
     | PermissionConfig
+    | undefined
+}
+
+export type ModeConfig = {
+  /**
+   * Mode identifier
+   */
+  id: string
+  /**
+   * Mode display name
+   */
+  name: string
+  description?: string
+  /**
+   * Icon name for UI display
+   */
+  icon?: string
+  /**
+   * Hex color code for the mode (e.g., #FF5733)
+   */
+  color?: string
+  /**
+   * Provider override for this mode
+   */
+  provider?: string
+  /**
+   * Default agent to use in this mode
+   */
+  default_agent?: string
+  /**
+   * Allowlist of agent names for this mode
+   */
+  allowed_agents?: Array<string>
+  /**
+   * Blocklist of agent names for this mode
+   */
+  disabled_agents?: Array<string>
+  /**
+   * Plugins required for this mode
+   */
+  requires_plugins?: Array<string>
+  /**
+   * Mode-specific overrides
+   */
+  overrides?: {
+    [key: string]: unknown
+  }
+  [key: string]:
+    | unknown
+    | string
+    | string
+    | Array<string>
+    | Array<string>
+    | Array<string>
+    | {
+        [key: string]: unknown
+      }
     | undefined
 }
 
@@ -1282,6 +1364,12 @@ export type Config = {
     summary?: AgentConfig
     compaction?: AgentConfig
     [key: string]: AgentConfig | undefined
+  }
+  /**
+   * Mode configuration for the app UI
+   */
+  modes?: {
+    [key: string]: ModeConfig
   }
   /**
    * Custom provider configurations and model overrides
@@ -2107,6 +2195,31 @@ export type ClaudePluginMarketplaceRefreshResponses = {
 export type ClaudePluginMarketplaceRefreshResponse =
   ClaudePluginMarketplaceRefreshResponses[keyof ClaudePluginMarketplaceRefreshResponses]
 
+export type ClaudePluginStatsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/claude-plugin/stats"
+}
+
+export type ClaudePluginStatsResponses = {
+  /**
+   * Plugin statistics
+   */
+  200: {
+    [key: string]: {
+      name: string
+      downloads: number
+      stars: number
+      version?: string
+    }
+  }
+}
+
+export type ClaudePluginStatsResponse = ClaudePluginStatsResponses[keyof ClaudePluginStatsResponses]
+
 export type PtyListData = {
   body?: never
   path?: never
@@ -2680,9 +2793,6 @@ export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChil
 export type SessionTodoData = {
   body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -2720,9 +2830,6 @@ export type SessionInitData = {
     messageID: string
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -2876,42 +2983,26 @@ export type SessionShareResponses = {
 
 export type SessionShareResponse = SessionShareResponses[keyof SessionShareResponses]
 
-export type SessionDiffData = {
+export type MessageDiffData = {
   body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
+    messageID?: string
   }
   query?: {
     directory?: string
-    messageID?: string
   }
-  url: "/session/{sessionID}/diff"
+  url: "/session/{sessionID}/message/{messageID}/diff"
 }
 
-export type SessionDiffErrors = {
+export type MessageDiffResponses = {
   /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
-
-export type SessionDiffResponses = {
-  /**
-   * List of diffs
+   * Successfully retrieved diff
    */
   200: Array<FileDiff>
 }
 
-export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponses]
+export type MessageDiffResponse = MessageDiffResponses[keyof MessageDiffResponses]
 
 export type SessionSummarizeData = {
   body?: {
@@ -2920,9 +3011,6 @@ export type SessionSummarizeData = {
     auto?: boolean
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -2956,9 +3044,6 @@ export type SessionSummarizeResponse = SessionSummarizeResponses[keyof SessionSu
 export type SessionMessagesData = {
   body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -3010,12 +3095,10 @@ export type SessionPromptData = {
     }
     system?: string
     variant?: string
+    thinking?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -3049,12 +3132,42 @@ export type SessionPromptResponses = {
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
 
+export type SessionDiffData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/diff"
+}
+
+export type SessionDiffErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
+
+export type SessionDiffResponses = {
+  /**
+   * List of diffs
+   */
+  200: Array<FileDiff>
+}
+
+export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponses]
+
 export type SessionMessageData = {
   body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
     /**
      * Message ID
@@ -3095,9 +3208,6 @@ export type SessionMessageResponse = SessionMessageResponses[keyof SessionMessag
 export type PartDeleteData = {
   body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
     /**
      * Message ID
@@ -3139,9 +3249,6 @@ export type PartDeleteResponse = PartDeleteResponses[keyof PartDeleteResponses]
 export type PartUpdateData = {
   body?: Part
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
     /**
      * Message ID
@@ -3197,12 +3304,10 @@ export type SessionPromptAsyncData = {
     }
     system?: string
     variant?: string
+    thinking?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -3243,9 +3348,6 @@ export type SessionCommandData = {
     variant?: string
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
@@ -3289,9 +3391,6 @@ export type SessionShellData = {
     command: string
   }
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
