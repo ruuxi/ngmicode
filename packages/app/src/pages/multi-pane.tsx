@@ -4,8 +4,8 @@ import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
 import { useLayout } from "@/context/layout"
+import { HomeScreen } from "@/components/home-screen"
 import { useGlobalSync } from "@/context/global-sync"
-import { HomeContent } from "@/components/home-content"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { SDKProvider, useSDK } from "@/context/sdk"
@@ -53,11 +53,15 @@ function PaneSyncedProviders(props: { paneId: string; directory: string; childre
   )
 }
 
-// Empty pane content when no directory is selected
-function EmptyPaneContent(props: { paneId: string; isFocused: () => boolean }) {
+function HomePane(props: { paneId: string; isFocused: () => boolean }) {
   const multiPane = useMultiPane()
-  const layout = useLayout()
   const globalSync = useGlobalSync()
+  const hideLogo = createMemo(() => multiPane.panes().length > 1)
+
+  function handleProjectSelected(directory: string) {
+    multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
+    multiPane.setFocused(props.paneId)
+  }
 
   const mostRecentProject = createMemo(() => {
     const sorted = globalSync.data.project.toSorted(
@@ -66,53 +70,41 @@ function EmptyPaneContent(props: { paneId: string; isFocused: () => boolean }) {
     return sorted[0]?.worktree
   })
 
-  const [selectedProject, setSelectedProject] = createSignal<string | undefined>(undefined)
-  const effectiveProject = createMemo(
-    () => selectedProject() ?? layout.projects.list()[0]?.worktree ?? mostRecentProject(),
-  )
+  createEffect(() => {
+    const candidate = mostRecentProject()
+    if (candidate) {
+      handleProjectSelected(candidate)
+    }
+  })
 
-  function handleSelectProject(directory: string) {
-    setSelectedProject(directory)
-    layout.projects.open(directory)
-    multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
-    multiPane.setFocused(props.paneId)
+  function handleNavigateMulti() {
+    multiPane.addPane()
   }
 
-  function handleClose() {
-    multiPane.removePane(props.paneId)
+  function handleMouseDown(event: MouseEvent) {
+    const target = event.target as HTMLElement
+    const isInteractive = target.closest('button, input, select, textarea, [contenteditable], [role="button"]')
+    if (!isInteractive) {
+      multiPane.setFocused(props.paneId)
+    }
   }
 
   return (
     <div
-      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
+      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150 ring-inset"
       classList={{
-        "ring-1 ring-border-accent-base": props.isFocused(),
+        "ring-1": true,
+        "ring-border-accent-base": props.isFocused(),
+        "ring-border-weak-base": !props.isFocused(),
         "opacity-60": !props.isFocused(),
       }}
-      onMouseDown={() => multiPane.setFocused(props.paneId)}
+      onMouseDown={handleMouseDown}
     >
-      <header
-        class="h-8 shrink-0 bg-background-base border-b flex items-center px-2 gap-1 justify-between"
-        classList={{
-          "border-border-accent-base": props.isFocused(),
-          "border-border-weak-base": !props.isFocused(),
-        }}
-      >
-        <div class="text-12-regular text-text-weak">New Tab</div>
-        <div class="flex items-center">
-          <IconButton icon="plus" variant="ghost" onClick={() => multiPane.addPane()} />
-          <Show when={multiPane.panes().length > 1}>
-            <IconButton icon="close" variant="ghost" onClick={handleClose} />
-          </Show>
-        </div>
-      </header>
-      <div class="flex-1 min-h-0">
-        <HomeContent
-          variant="pane"
-          selectedProject={effectiveProject()}
-          onSelectProject={handleSelectProject}
-        />
-      </div>
+      <HomeScreen
+        hideLogo={hideLogo()}
+        onProjectSelected={handleProjectSelected}
+        onNavigateMulti={handleNavigateMulti}
+      />
     </div>
   )
 }
@@ -318,8 +310,15 @@ function MultiPaneContent() {
         }
         setSearchParams({ dir: undefined, session: undefined, newTab: undefined })
       } else {
-        // No URL params, use most recent project
-        multiPane.addPane(getLastProject())
+        const lastProject = getLastProject()
+        if (wantsNewTab) {
+          multiPane.addPane(lastProject)
+          multiPane.addPane(lastProject)
+          setSearchParams({ newTab: undefined })
+        } else {
+          // No URL params, use most recent project
+          multiPane.addPane(lastProject)
+        }
       }
     } else if (dirFromUrl && wantsNewTab) {
       // Already have panes, but coming from single session "New Tab" button
@@ -398,7 +397,7 @@ function MultiPaneContent() {
             const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
             return (
               <Show when={pane.directory} keyed fallback={
-                <EmptyPaneContent paneId={pane.id} isFocused={isFocused} />
+                <HomePane paneId={pane.id} isFocused={isFocused} />
               }>
                 {(directory) => (
                   <SDKProvider directory={directory}>

@@ -1634,6 +1634,7 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       thinking?: boolean
+      claudeCodeFlow?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1653,6 +1654,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "thinking" },
+            { in: "body", key: "claudeCodeFlow" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1754,6 +1756,7 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       thinking?: boolean
+      claudeCodeFlow?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1773,6 +1776,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "thinking" },
+            { in: "body", key: "claudeCodeFlow" },
             { in: "body", key: "parts" },
           ],
         },

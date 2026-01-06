@@ -23,10 +23,10 @@ const ModelList: Component<{
     local.model
       .list()
       .filter((m) => {
-        // In Claude Code mode, show only claude-agent models (skip visibility check for them)
+        // In Claude Code mode, show claude-agent models and openrouter models
         // In other modes, hide claude-agent models
         if (isClaudeCodeMode()) {
-          return m.provider.id === "claude-agent"
+          return m.provider.id === "claude-agent" || m.provider.id === "openrouter"
         }
         return m.provider.id !== "claude-agent"
       })

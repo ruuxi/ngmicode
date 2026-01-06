@@ -1288,8 +1288,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
     const agent = currentAgent.name
     const variant = local.model.variant.current()
-    // Only pass thinking for Claude Code mode
-    const thinking = currentModel.provider.id === "claude-agent" ? local.model.thinking.current() : undefined
+    const isClaudeCodeMode = local.mode.current()?.id === "claude-code"
+    // Pass thinking and claudeCodeFlow for Claude Code mode (works with both claude-agent and openrouter)
+    const thinking = isClaudeCodeMode ? local.model.thinking.current() : undefined
+    const claudeCodeFlow = isClaudeCodeMode ? true : undefined
 
     if (isShellMode) {
       sdk.client.session
@@ -1366,6 +1368,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         parts: requestParts,
         variant,
         thinking,
+        claudeCodeFlow,
       })
       .catch((e) => {
         console.error("Failed to send prompt", e)

@@ -92,6 +92,7 @@ export type UserMessage = {
   }
   variant?: string
   thinking?: boolean
+  claudeCodeFlow?: boolean
 }
 
 export type ProviderAuthError = {
@@ -3096,6 +3097,7 @@ export type SessionPromptData = {
     system?: string
     variant?: string
     thinking?: boolean
+    claudeCodeFlow?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
@@ -3305,6 +3307,7 @@ export type SessionPromptAsyncData = {
     system?: string
     variant?: string
     thinking?: boolean
+    claudeCodeFlow?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {

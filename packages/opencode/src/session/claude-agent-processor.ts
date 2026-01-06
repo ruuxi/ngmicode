@@ -14,6 +14,7 @@ import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { ClaudeAgent } from "@/provider/claude-agent"
+import { Provider } from "@/provider/provider"
 import { SessionStatus } from "./status"
 import { PermissionNext } from "@/permission/next"
 import type { Agent } from "@/agent/agent"
@@ -147,6 +148,7 @@ export namespace ClaudeAgentProcessor {
     agent: Agent.Info
     abort: AbortSignal
     modelID?: string
+    providerID?: string
     /** Enable extended thinking with the specified token budget */
     maxThinkingTokens?: number
   }
@@ -510,10 +512,34 @@ export namespace ClaudeAgentProcessor {
     log.info("starting claude agent process", {
       sessionID: input.sessionID,
       agent: input.agent.name,
+      providerID: input.providerID,
+      modelID: input.modelID,
     })
 
     // Get authentication environment variables
-    const authEnv = await getAuthEnv()
+    let authEnv = await getAuthEnv()
+
+    // Check if using OpenRouter - if so, configure for OpenRouter API
+    const isOpenRouter = input.providerID === "openrouter"
+    let openRouterModelOverride: string | undefined
+    if (isOpenRouter) {
+      const openRouterProvider = await Provider.getProvider("openrouter")
+      if (!openRouterProvider?.key) {
+        throw new MessageV2.AuthError({
+          providerID: "openrouter",
+          message: "OpenRouter API key not configured. Please add your OpenRouter API key in provider settings.",
+        })
+      }
+      // Set OpenRouter env vars per their documentation
+      authEnv = {
+        ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+        ANTHROPIC_AUTH_TOKEN: openRouterProvider.key,
+        ANTHROPIC_API_KEY: "", // Must be explicitly empty to prevent conflicts
+      }
+      // The model ID from OpenRouter (e.g., "anthropic/claude-opus-4") will be used as the model override
+      openRouterModelOverride = input.modelID
+      log.info("using OpenRouter provider", { modelID: openRouterModelOverride })
+    }
 
     SessionStatus.set(input.sessionID, { type: "busy" })
 
@@ -567,6 +593,18 @@ export namespace ClaudeAgentProcessor {
           ? createMultimodalPrompt(input.prompt, input.images, sdkSessionID)
           : input.prompt
 
+      // Build env vars - for OpenRouter, add model override
+      const envVars: Record<string, string | undefined> = {
+        ...globalThis.process.env,
+        ...authEnv,
+      }
+      if (isOpenRouter && openRouterModelOverride) {
+        // Override all model aliases to use the selected OpenRouter model
+        envVars.ANTHROPIC_DEFAULT_SONNET_MODEL = openRouterModelOverride
+        envVars.ANTHROPIC_DEFAULT_OPUS_MODEL = openRouterModelOverride
+        envVars.ANTHROPIC_DEFAULT_HAIKU_MODEL = openRouterModelOverride
+      }
+
       const generator = query({
         prompt,
         options: {
@@ -575,17 +613,14 @@ export namespace ClaudeAgentProcessor {
           cwd: Instance.directory,
           permissionMode,
           pathToClaudeCodeExecutable: claudeExecutable,
-          // Pass the selected model (opus, sonnet, haiku, or default)
-          model: input.modelID as "opus" | "sonnet" | "haiku" | "default" | undefined,
+          // Pass the selected model - for OpenRouter, use "sonnet" since we override via env
+          model: isOpenRouter ? "sonnet" : (input.modelID as "opus" | "sonnet" | "haiku" | "default" | undefined),
           // Enable extended thinking if specified
           maxThinkingTokens: input.maxThinkingTokens,
           // Handle AskUserQuestion tool specially
           canUseTool: createCanUseTool(ctx),
-          // Pass auth environment variables (OAuth token or API key)
-          env: {
-            ...globalThis.process.env,
-            ...authEnv,
-          },
+          // Pass auth environment variables (OAuth token or API key, or OpenRouter config)
+          env: envVars,
           allowedTools: [
             "Read",
             "Write",

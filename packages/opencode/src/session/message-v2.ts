@@ -310,6 +310,8 @@ export namespace MessageV2 {
     variant: z.string().optional(),
     /** Enable extended thinking for Claude Code mode */
     thinking: z.boolean().optional(),
+    /** Use Claude Code flow (Agent SDK) - for OpenRouter models in Claude Code mode */
+    claudeCodeFlow: z.boolean().optional(),
   }).meta({
     ref: "UserMessage",
   })

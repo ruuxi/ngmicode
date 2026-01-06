@@ -1,5 +1,4 @@
 import {
-  For,
   Show,
   createMemo,
   createEffect,
@@ -14,7 +13,6 @@ import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
 import { Icon } from "@opencode-ai/ui/icon"
-import { Button } from "@opencode-ai/ui/button"
 import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
@@ -22,14 +20,11 @@ import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
 import { useMultiPane } from "@/context/multi-pane"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { useGlobalSync } from "@/context/global-sync"
-import { usePlatform } from "@/context/platform"
-import { useServer } from "@/context/server"
-import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { useHeaderOverlay } from "@/hooks/use-header-overlay"
 import { useSessionMessages } from "@/hooks/use-session-messages"
 import { useSessionSync } from "@/hooks/use-session-sync"
 import { useSessionCommands } from "@/hooks/use-session-commands"
+import { HomeScreen } from "@/components/home-screen"
 import { SessionPaneHeader } from "./header"
 import { ReviewPanel } from "./review-panel"
 import { ContextTab } from "./context-tab"
@@ -50,97 +45,6 @@ export interface SessionPaneProps {
   onDirectoryChange?: (directory: string) => void
   onClose?: () => void
   promptInputRef?: Accessor<HTMLDivElement | undefined>
-}
-
-function MultiPaneProjectList(props: { currentDirectory: Accessor<string>; onSelect: (dir: string) => void }) {
-  const globalSync = useGlobalSync()
-  const layout = useLayout()
-  const platform = usePlatform()
-  const dialog = useDialog()
-  const server = useServer()
-  const homedir = createMemo(() => globalSync.data.path.home)
-
-  const projects = createMemo(() => {
-    const sorted = globalSync.data.project
-      .toSorted((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
-      .slice(0, 5)
-    const current = props.currentDirectory()
-    if (!current) return sorted
-    const hasCurrent = sorted.some((project) => project.worktree === current)
-    if (hasCurrent) return sorted
-    const now = Date.now()
-    return [
-      { id: current, worktree: current, time: { created: now, updated: now } },
-      ...sorted,
-    ].slice(0, 5)
-  })
-
-  function selectProject(directory: string) {
-    if (!directory || directory === props.currentDirectory()) return
-    layout.projects.open(directory)
-    props.onSelect(directory)
-  }
-
-  async function chooseProject() {
-    function resolve(result: string | string[] | null) {
-      if (Array.isArray(result)) {
-        if (result[0]) selectProject(result[0])
-      } else if (result) {
-        selectProject(result)
-      }
-    }
-
-    if (platform.openDirectoryPickerDialog && server.isLocal()) {
-      const result = await platform.openDirectoryPickerDialog?.({
-        title: "Open project",
-        multiple: false,
-      })
-      resolve(result)
-    } else {
-      dialog.show(
-        () => <DialogSelectDirectory multiple={false} onSelect={resolve} />,
-        () => resolve(null),
-      )
-    }
-  }
-
-  return (
-    <div class="mt-6 w-full max-w-sm">
-      <div class="flex gap-2 items-center justify-between px-2 mb-1">
-        <div class="text-12-regular text-text-weak">Projects</div>
-        <Button icon="folder-add-left" size="small" variant="ghost" onClick={chooseProject}>
-          Open
-        </Button>
-      </div>
-      <div class="flex flex-col gap-1">
-        <For each={projects()}>
-          {(project) => {
-            const isSelected = () => project.worktree === props.currentDirectory()
-            return (
-              <Button
-                size="normal"
-                variant={isSelected() ? "secondary" : "ghost"}
-                class="text-12-mono text-left justify-between px-2 py-1.5"
-                onClick={() => selectProject(project.worktree)}
-              >
-                <span class="truncate" classList={{ "text-text-accent-base": isSelected() }}>
-                  {project.worktree.replace(homedir(), "~")}
-                </span>
-                <Show when={isSelected()}>
-                  <span class="text-11-regular text-text-accent-base shrink-0 ml-2">current</span>
-                </Show>
-                <Show when={!isSelected()}>
-                  <span class="text-11-regular text-text-weaker shrink-0 ml-2">
-                    {DateTime.fromMillis(project.time.updated ?? project.time.created).toRelative()}
-                  </span>
-                </Show>
-              </Button>
-            )
-          }}
-        </For>
-      </div>
-    </div>
-  )
 }
 
 export function SessionPane(props: SessionPaneProps) {
@@ -331,11 +235,20 @@ export function SessionPane(props: SessionPaneProps) {
     () => layout.review.opened() && (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
   )
 
+  const showHomeScreen = createMemo(() => props.mode === "multi" && !sessionId())
+  const hidePaneLogo = createMemo(
+    () => props.mode === "multi" && !!multiPane && multiPane.panes().length > 1,
+  )
+
+  function focusPane() {
+    if (props.mode !== "multi" || !props.paneId || !multiPane) return
+    multiPane.setFocused(props.paneId)
+  }
+
   function handleProjectSelect(directory: string) {
+    if (props.mode !== "multi") return
     props.onDirectoryChange?.(directory)
-    if (props.mode === "multi" && props.paneId && multiPane) {
-      multiPane.setFocused(props.paneId)
-    }
+    focusPane()
   }
 
   // New session view
@@ -361,12 +274,6 @@ export function SessionPane(props: SessionPaneProps) {
             </div>
           </div>
         )}
-      </Show>
-      <Show when={props.mode === "multi"}>
-        <MultiPaneProjectList
-          currentDirectory={expectedDirectory}
-          onSelect={handleProjectSelect}
-        />
       </Show>
     </div>
   )
@@ -409,13 +316,14 @@ export function SessionPane(props: SessionPaneProps) {
   // Multi mode container styles
   const multiContainerClass = () =>
     props.mode === "multi"
-      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
+      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150 ring-1 ring-inset"
       : "relative bg-background-base size-full overflow-hidden flex flex-col"
 
   const multiContainerClassList = () =>
     props.mode === "multi"
       ? {
-          "ring-1 ring-border-accent-base": isFocused(),
+          "ring-border-accent-base": isFocused(),
+          "ring-border-weak-base": !isFocused(),
           "opacity-60": !isFocused(),
         }
       : {}
@@ -454,6 +362,9 @@ export function SessionPane(props: SessionPaneProps) {
             "opacity-100 pointer-events-auto": headerOverlay.showHeader(),
             "opacity-0 pointer-events-none": !headerOverlay.showHeader(),
           }}
+          onMouseDown={(e) => {
+            e.stopPropagation()
+          }}
           onMouseEnter={() => headerOverlay.setIsOverHeader(true)}
           onMouseLeave={() => headerOverlay.setIsOverHeader(false)}
           onFocusIn={() => headerOverlay.setHeaderHasFocus(true)}
@@ -476,54 +387,68 @@ export function SessionPane(props: SessionPaneProps) {
         </div>
       </Show>
 
-      {/* Mobile view */}
-      <MobileView
-        sessionId={sessionId()}
-        visibleUserMessages={sessionMessages.visibleUserMessages}
-        lastUserMessage={sessionMessages.lastUserMessage}
-        diffs={diffs}
-        working={working}
-        onUserInteracted={() => setStore("userInteracted", true)}
-        newSessionView={NewSessionView}
-      />
-
-      {/* Desktop view */}
-      <div
-        class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}
-      >
-        <div
-          class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full bg-background-stronger"
-          style={{
-            width: showTabs() ? `${layout.session.width()}px` : "100%",
-          }}
-        >
-          <div class="flex-1 min-h-0 overflow-hidden">
-            <DesktopSessionContent />
-          </div>
-          <Show when={showTabs()}>
-            <ResizeHandle
-              direction="horizontal"
-              size={layout.session.width()}
-              min={450}
-              max={window.innerWidth * 0.45}
-              onResize={layout.session.resize}
+      <Show
+        when={showHomeScreen()}
+        fallback={
+          <>
+            {/* Mobile view */}
+            <MobileView
+              sessionId={sessionId()}
+              visibleUserMessages={sessionMessages.visibleUserMessages}
+              lastUserMessage={sessionMessages.lastUserMessage}
+              diffs={diffs}
+              working={working}
+              onUserInteracted={() => setStore("userInteracted", true)}
+              newSessionView={NewSessionView}
             />
-          </Show>
-        </div>
 
-        {/* Review panel */}
-        <Show when={showTabs()}>
-          <ReviewPanel
-            sessionKey={sessionKey()}
-            sessionId={sessionId()}
-            diffs={diffs()}
-            sessionInfo={info()}
-            activeDraggable={store.activeDraggable}
-            onDragStart={(id) => setStore("activeDraggable", id)}
-            onDragEnd={() => setStore("activeDraggable", undefined)}
-          />
-        </Show>
-      </div>
+            {/* Desktop view */}
+            <div
+              class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}
+            >
+              <div
+                class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full bg-background-stronger"
+                style={{
+                  width: showTabs() ? `${layout.session.width()}px` : "100%",
+                }}
+              >
+                <div class="flex-1 min-h-0 overflow-hidden">
+                  <DesktopSessionContent />
+                </div>
+                <Show when={showTabs()}>
+                  <ResizeHandle
+                    direction="horizontal"
+                    size={layout.session.width()}
+                    min={450}
+                    max={window.innerWidth * 0.45}
+                    onResize={layout.session.resize}
+                  />
+                </Show>
+              </div>
+
+              {/* Review panel */}
+              <Show when={showTabs()}>
+                <ReviewPanel
+                  sessionKey={sessionKey()}
+                  sessionId={sessionId()}
+                  diffs={diffs()}
+                  sessionInfo={info()}
+                  activeDraggable={store.activeDraggable}
+                  onDragStart={(id) => setStore("activeDraggable", id)}
+                  onDragEnd={() => setStore("activeDraggable", undefined)}
+                />
+              </Show>
+            </div>
+          </>
+        }
+      >
+        <HomeScreen
+          selectedProject={expectedDirectory() || undefined}
+          hideLogo={hidePaneLogo()}
+          onProjectSelected={handleProjectSelect}
+          onNavigateMulti={() => multiPane?.addPane()}
+        />
+      </Show>
 
     </div>
   )

@@ -102,6 +102,8 @@ export namespace SessionPrompt {
     variant: z.string().optional(),
     /** Enable extended thinking for Claude Code mode */
     thinking: z.boolean().optional(),
+    /** Use Claude Code flow (Agent SDK) - for OpenRouter models in Claude Code mode */
+    claudeCodeFlow: z.boolean().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -552,7 +554,9 @@ export namespace SessionPrompt {
       }
 
       // Claude Agent processing - use Agent SDK instead of normal LLM flow
-      if (ClaudeAgent.isClaudeAgentModel(model.providerID)) {
+      // Also route OpenRouter models through Claude Agent when claudeCodeFlow is enabled
+      const useClaudeAgentFlow = ClaudeAgent.isClaudeAgentModel(model.providerID) || lastUser.claudeCodeFlow === true
+      if (useClaudeAgentFlow) {
         const agent = await Agent.get(lastUser.agent)
         const assistantMessage = (await Session.updateMessage({
           id: Identifier.ascending("message"),
@@ -640,6 +644,7 @@ export namespace SessionPrompt {
             agent,
             abort,
             modelID: model.id,
+            providerID: model.providerID,
             maxThinkingTokens: thinkingEnabled ? 10000 : undefined,
           })
 
@@ -1102,6 +1107,7 @@ export namespace SessionPrompt {
       system: input.system,
       variant: input.variant,
       thinking: input.thinking,
+      claudeCodeFlow: input.claudeCodeFlow,
     }
 
     const parts = await Promise.all(

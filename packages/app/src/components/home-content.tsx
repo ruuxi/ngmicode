@@ -19,6 +19,7 @@ export interface HomeContentProps {
   onSelectProject?: (directory: string) => void
   onNavigateMulti?: () => void
   selectedProject?: string
+  hideLogo?: boolean
 }
 
 export function HomeContent(props: HomeContentProps) {
@@ -97,7 +98,9 @@ export function HomeContent(props: HomeContentProps) {
       <div class="size-full flex flex-col">
         <div class="flex-1 flex flex-col items-center justify-center">
           <div class={`flex flex-col items-center w-full ${maxWidth()} px-6`}>
-            <Logo class={`${logoWidth()} opacity-12`} />
+            <Show when={!props.hideLogo}>
+              <Logo class={`${logoWidth()} opacity-12`} />
+            </Show>
             <Button
               size="large"
               variant="ghost"
