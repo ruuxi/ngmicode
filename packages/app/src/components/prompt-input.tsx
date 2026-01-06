@@ -153,6 +153,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
   const working = createMemo(() => status()?.type !== "idle")
   const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
+  const [submitting, setSubmitting] = createSignal(false)
 
   const [store, setStore] = createStore<{
     popover: "at" | "slash" | null
@@ -1191,6 +1192,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const handleSubmit = async (event: Event) => {
     event.preventDefault()
+    if (submitting()) return
     const currentPrompt = prompt.current()
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
     const hasImageAttachments = store.imageAttachments.length > 0
@@ -1199,135 +1201,112 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    addToHistory(currentPrompt, store.mode)
-    setStore("historyIndex", -1)
-    setStore("savedPrompt", null)
+    setSubmitting(true)
+    try {
+      addToHistory(currentPrompt, store.mode)
+      setStore("historyIndex", -1)
+      setStore("savedPrompt", null)
 
-    let existing = info()
-    if (!existing) {
-      const worktreeEnabled = layout.worktree.enabled()
-      const worktreeCleanup = layout.worktree.cleanup()
-      const created = await sdk.client.session.create(
-        worktreeEnabled ? { useWorktree: true, worktreeCleanup } : {},
-      )
-      existing = created.data ?? undefined
-      if (existing) {
-        if (props.onSessionCreated) {
-          props.onSessionCreated(existing.id)
-        } else {
-          navigate(existing.id)
+      let existing = info()
+      if (!existing) {
+        const worktreeEnabled = layout.worktree.enabled()
+        const worktreeCleanup = layout.worktree.cleanup()
+        const created = await sdk.client.session.create(
+          worktreeEnabled ? { useWorktree: true, worktreeCleanup } : {},
+        )
+        existing = created.data ?? undefined
+        if (existing) {
+          if (props.onSessionCreated) {
+            props.onSessionCreated(existing.id)
+          } else {
+            navigate(existing.id)
+          }
         }
       }
-    }
-    if (!existing) return
+      if (!existing) return
 
-    const toAbsolutePath = (path: string) => (path.startsWith("/") ? path : sync.absolute(path))
-    const fileAttachments = currentPrompt.filter(
-      (part) => part.type === "file",
-    ) as import("@/context/prompt").FileAttachmentPart[]
-    const agentAttachments = currentPrompt.filter((part) => part.type === "agent") as AgentPart[]
+      const toAbsolutePath = (path: string) => (path.startsWith("/") ? path : sync.absolute(path))
+      const fileAttachments = currentPrompt.filter(
+        (part) => part.type === "file",
+      ) as import("@/context/prompt").FileAttachmentPart[]
+      const agentAttachments = currentPrompt.filter((part) => part.type === "agent") as AgentPart[]
 
-    const fileAttachmentParts = fileAttachments.map((attachment) => {
-      const absolute = toAbsolutePath(attachment.path)
-      const query = attachment.selection
-        ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
-        : ""
-      return {
+      const fileAttachmentParts = fileAttachments.map((attachment) => {
+        const absolute = toAbsolutePath(attachment.path)
+        const query = attachment.selection
+          ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
+          : ""
+        return {
+          id: Identifier.ascending("part"),
+          type: "file" as const,
+          mime: "text/plain",
+          url: `file://${absolute}${query}`,
+          filename: getFilename(attachment.path),
+          source: {
+            type: "file" as const,
+            text: {
+              value: attachment.content,
+              start: attachment.start,
+              end: attachment.end,
+            },
+            path: absolute,
+          },
+        }
+      })
+
+      const agentAttachmentParts = agentAttachments.map((attachment) => ({
+        id: Identifier.ascending("part"),
+        type: "agent" as const,
+        name: attachment.name,
+        source: {
+          value: attachment.content,
+          start: attachment.start,
+          end: attachment.end,
+        },
+      }))
+
+      const imageAttachmentParts = store.imageAttachments.map((attachment) => ({
         id: Identifier.ascending("part"),
         type: "file" as const,
-        mime: "text/plain",
-        url: `file://${absolute}${query}`,
-        filename: getFilename(attachment.path),
-        source: {
-          type: "file" as const,
-          text: {
-            value: attachment.content,
-            start: attachment.start,
-            end: attachment.end,
-          },
-          path: absolute,
-        },
+        mime: attachment.mime,
+        url: attachment.dataUrl,
+        filename: attachment.filename,
+      }))
+
+      const isShellMode = store.mode === "shell"
+      tabs().setActive(undefined)
+      editorRef.innerHTML = ""
+      prompt.set([{ type: "text", content: "", start: 0, end: 0 }], 0)
+      setStore("imageAttachments", [])
+      setStore("mode", "normal")
+
+      const currentModel = local.model.current()
+      const currentAgent = local.agent.current()
+      if (!currentModel || !currentAgent) {
+        console.warn("No agent or model available for prompt submission")
+        return
       }
-    })
+      const model = {
+        modelID: currentModel.id,
+        providerID: currentModel.provider.id,
+      }
+      const agent = currentAgent.name
+      const variant = local.model.variant.current()
+      const isClaudeCodeMode = local.mode.current()?.id === "claude-code"
+      // Pass thinking and claudeCodeFlow for Claude Code mode (works with both claude-agent and openrouter)
+      const thinking = isClaudeCodeMode ? local.model.thinking.current() : undefined
+      const claudeCodeFlow = isClaudeCodeMode ? true : undefined
 
-    const agentAttachmentParts = agentAttachments.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "agent" as const,
-      name: attachment.name,
-      source: {
-        value: attachment.content,
-        start: attachment.start,
-        end: attachment.end,
-      },
-    }))
-
-    const imageAttachmentParts = store.imageAttachments.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "file" as const,
-      mime: attachment.mime,
-      url: attachment.dataUrl,
-      filename: attachment.filename,
-    }))
-
-    const isShellMode = store.mode === "shell"
-    tabs().setActive(undefined)
-    editorRef.innerHTML = ""
-    prompt.set([{ type: "text", content: "", start: 0, end: 0 }], 0)
-    setStore("imageAttachments", [])
-    setStore("mode", "normal")
-
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!currentModel || !currentAgent) {
-      console.warn("No agent or model available for prompt submission")
-      return
-    }
-    const model = {
-      modelID: currentModel.id,
-      providerID: currentModel.provider.id,
-    }
-    const agent = currentAgent.name
-    const variant = local.model.variant.current()
-    const isClaudeCodeMode = local.mode.current()?.id === "claude-code"
-    // Pass thinking and claudeCodeFlow for Claude Code mode (works with both claude-agent and openrouter)
-    const thinking = isClaudeCodeMode ? local.model.thinking.current() : undefined
-    const claudeCodeFlow = isClaudeCodeMode ? true : undefined
-
-    if (isShellMode) {
-      sdk.client.session
-        .shell({
-          sessionID: existing.id,
-          agent,
-          model,
-          command: text,
-        })
-        .catch((e) => {
-          console.error("Failed to send shell command", e)
-          showToast({
-            variant: "error",
-            title: "Failed to send command",
-            description: "Please try again.",
-          })
-        })
-      return
-    }
-
-    if (text.startsWith("/")) {
-      const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
-      const customCommand = sync.data.command.find((c) => c.name === commandName)
-      if (customCommand) {
+      if (isShellMode) {
         sdk.client.session
-          .command({
+          .shell({
             sessionID: existing.id,
-            command: commandName,
-            arguments: args.join(" "),
             agent,
-            model: `${model.providerID}/${model.modelID}`,
-            variant,
+            model,
+            command: text,
           })
           .catch((e) => {
-            console.error("Failed to send command", e)
+            console.error("Failed to send shell command", e)
             showToast({
               variant: "error",
               title: "Failed to send command",
@@ -1336,48 +1315,76 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
         return
       }
-    }
 
-    const messageID = Identifier.ascending("message")
-    const textPart = {
-      id: Identifier.ascending("part"),
-      type: "text" as const,
-      text,
-    }
-    const requestParts = [textPart, ...fileAttachmentParts, ...agentAttachmentParts, ...imageAttachmentParts]
-    const optimisticParts = requestParts.map((part) => ({
-      ...part,
-      sessionID: existing.id,
-      messageID,
-    }))
+      if (text.startsWith("/")) {
+        const [cmdName, ...args] = text.split(" ")
+        const commandName = cmdName.slice(1)
+        const customCommand = sync.data.command.find((c) => c.name === commandName)
+        if (customCommand) {
+          sdk.client.session
+            .command({
+              sessionID: existing.id,
+              command: commandName,
+              arguments: args.join(" "),
+              agent,
+              model: `${model.providerID}/${model.modelID}`,
+              variant,
+            })
+            .catch((e) => {
+              console.error("Failed to send command", e)
+              showToast({
+                variant: "error",
+                title: "Failed to send command",
+                description: "Please try again.",
+              })
+            })
+          return
+        }
+      }
 
-    sync.session.addOptimisticMessage({
-      sessionID: existing.id,
-      messageID,
-      parts: optimisticParts,
-      agent,
-      model,
-    })
-
-    sdk.client.session
-      .prompt({
+      const messageID = Identifier.ascending("message")
+      const textPart = {
+        id: Identifier.ascending("part"),
+        type: "text" as const,
+        text,
+      }
+      const requestParts = [textPart, ...fileAttachmentParts, ...agentAttachmentParts, ...imageAttachmentParts]
+      const optimisticParts = requestParts.map((part) => ({
+        ...part,
         sessionID: existing.id,
+        messageID,
+      }))
+
+      sync.session.addOptimisticMessage({
+        sessionID: existing.id,
+        messageID,
+        parts: optimisticParts,
         agent,
         model,
-        messageID,
-        parts: requestParts,
-        variant,
-        thinking,
-        claudeCodeFlow,
       })
-      .catch((e) => {
-        console.error("Failed to send prompt", e)
-        showToast({
-          variant: "error",
-          title: "Failed to send message",
-          description: "Please try again.",
+
+      sdk.client.session
+        .prompt({
+          sessionID: existing.id,
+          agent,
+          model,
+          messageID,
+          parts: requestParts,
+          variant,
+          thinking,
+          claudeCodeFlow,
         })
-      })
+        .catch((e) => {
+          console.error("Failed to send prompt", e)
+          showToast({
+            variant: "error",
+            title: "Failed to send message",
+            description: "Please try again.",
+          })
+        })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
