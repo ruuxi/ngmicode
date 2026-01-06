@@ -1,0 +1,535 @@
+import {
+  For,
+  Show,
+  createMemo,
+  createEffect,
+  on,
+  onMount,
+  onCleanup,
+  type Accessor,
+} from "solid-js"
+import { createStore } from "solid-js/store"
+import { useParams, useNavigate } from "@solidjs/router"
+import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
+import { SessionTurn } from "@opencode-ai/ui/session-turn"
+import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
+import { Icon } from "@opencode-ai/ui/icon"
+import { Button } from "@opencode-ai/ui/button"
+import { DateTime } from "luxon"
+import { useSync } from "@/context/sync"
+import { useSDK } from "@/context/sdk"
+import { useLocal } from "@/context/local"
+import { useLayout } from "@/context/layout"
+import { useMultiPane } from "@/context/multi-pane"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { useGlobalSync } from "@/context/global-sync"
+import { usePlatform } from "@/context/platform"
+import { useServer } from "@/context/server"
+import { DialogSelectDirectory } from "@/components/dialog-select-directory"
+import { useHeaderOverlay } from "@/hooks/use-header-overlay"
+import { useSessionMessages } from "@/hooks/use-session-messages"
+import { useSessionSync } from "@/hooks/use-session-sync"
+import { useSessionCommands } from "@/hooks/use-session-commands"
+import { SessionPaneHeader } from "./header"
+import { ReviewPanel } from "./review-panel"
+import { ContextTab } from "./context-tab"
+import { MobileView } from "./mobile-view"
+import { base64Decode } from "@opencode-ai/util/encode"
+import { getDirectory, getFilename } from "@opencode-ai/util/path"
+import type { UserMessage } from "@opencode-ai/sdk/v2"
+
+export type SessionPaneMode = "single" | "multi"
+
+export interface SessionPaneProps {
+  mode: SessionPaneMode
+  paneId?: string
+  directory: string
+  sessionId?: string
+  isFocused?: Accessor<boolean>
+  onSessionChange?: (sessionId: string | undefined) => void
+  onDirectoryChange?: (directory: string) => void
+  onClose?: () => void
+  promptInputRef?: Accessor<HTMLDivElement | undefined>
+}
+
+function MultiPaneProjectList(props: { currentDirectory: Accessor<string>; onSelect: (dir: string) => void }) {
+  const globalSync = useGlobalSync()
+  const layout = useLayout()
+  const platform = usePlatform()
+  const dialog = useDialog()
+  const server = useServer()
+  const homedir = createMemo(() => globalSync.data.path.home)
+
+  const projects = createMemo(() => {
+    const sorted = globalSync.data.project
+      .toSorted((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
+      .slice(0, 5)
+    const current = props.currentDirectory()
+    if (!current) return sorted
+    const hasCurrent = sorted.some((project) => project.worktree === current)
+    if (hasCurrent) return sorted
+    const now = Date.now()
+    return [
+      { id: current, worktree: current, time: { created: now, updated: now } },
+      ...sorted,
+    ].slice(0, 5)
+  })
+
+  function selectProject(directory: string) {
+    if (!directory || directory === props.currentDirectory()) return
+    layout.projects.open(directory)
+    props.onSelect(directory)
+  }
+
+  async function chooseProject() {
+    function resolve(result: string | string[] | null) {
+      if (Array.isArray(result)) {
+        if (result[0]) selectProject(result[0])
+      } else if (result) {
+        selectProject(result)
+      }
+    }
+
+    if (platform.openDirectoryPickerDialog && server.isLocal()) {
+      const result = await platform.openDirectoryPickerDialog?.({
+        title: "Open project",
+        multiple: false,
+      })
+      resolve(result)
+    } else {
+      dialog.show(
+        () => <DialogSelectDirectory multiple={false} onSelect={resolve} />,
+        () => resolve(null),
+      )
+    }
+  }
+
+  return (
+    <div class="mt-6 w-full max-w-sm">
+      <div class="flex gap-2 items-center justify-between px-2 mb-1">
+        <div class="text-12-regular text-text-weak">Projects</div>
+        <Button icon="folder-add-left" size="small" variant="ghost" onClick={chooseProject}>
+          Open
+        </Button>
+      </div>
+      <div class="flex flex-col gap-1">
+        <For each={projects()}>
+          {(project) => {
+            const isSelected = () => project.worktree === props.currentDirectory()
+            return (
+              <Button
+                size="normal"
+                variant={isSelected() ? "secondary" : "ghost"}
+                class="text-12-mono text-left justify-between px-2 py-1.5"
+                onClick={() => selectProject(project.worktree)}
+              >
+                <span class="truncate" classList={{ "text-text-accent-base": isSelected() }}>
+                  {project.worktree.replace(homedir(), "~")}
+                </span>
+                <Show when={isSelected()}>
+                  <span class="text-11-regular text-text-accent-base shrink-0 ml-2">current</span>
+                </Show>
+                <Show when={!isSelected()}>
+                  <span class="text-11-regular text-text-weaker shrink-0 ml-2">
+                    {DateTime.fromMillis(project.time.updated ?? project.time.created).toRelative()}
+                  </span>
+                </Show>
+              </Button>
+            )
+          }}
+        </For>
+      </div>
+    </div>
+  )
+}
+
+export function SessionPane(props: SessionPaneProps) {
+  const params = useParams()
+  const navigate = useNavigate()
+  const sync = useSync()
+  const sdk = useSDK()
+  const local = useLocal()
+  const layout = useLayout()
+  const dialog = useDialog()
+  const multiPane = props.mode === "multi" ? useMultiPane() : undefined
+
+  // Local state
+  const [store, setStore] = createStore({
+    stepsExpanded: false,
+    userInteracted: false,
+    activeDraggable: undefined as string | undefined,
+  })
+
+  // Session ID (from props in multi mode, from params in single mode)
+  const sessionId = createMemo(() => (props.mode === "single" ? params.id : props.sessionId))
+
+  // Directory matching
+  const expectedDirectory = createMemo(() =>
+    props.mode === "single" ? (params.dir ? base64Decode(params.dir) : "") : props.directory,
+  )
+  const sdkDirectoryMatches = createMemo(
+    () => expectedDirectory() !== "" && sdk.directory === expectedDirectory(),
+  )
+
+  // Session key for tabs
+  const sessionKey = createMemo(() =>
+    props.mode === "single"
+      ? `${params.dir}${params.id ? "/" + params.id : ""}`
+      : `multi-${props.paneId}-${props.directory}${props.sessionId ? "/" + props.sessionId : ""}`,
+  )
+
+  // Tab management
+  const tabs = createMemo(() => layout.tabs(sessionKey()))
+
+  // Session info
+  const info = createMemo(() => {
+    const id = sessionId()
+    return id ? sync.session.get(id) : undefined
+  })
+
+  // Diffs
+  const diffs = createMemo(() => {
+    const id = sessionId()
+    return id ? (sync.data.session_diff[id] ?? []) : []
+  })
+
+  // Session messages hook
+  const sessionMessages = useSessionMessages({
+    sessionId,
+  })
+
+  // Focus state
+  const isFocused = createMemo(() => props.isFocused?.() ?? true)
+
+  // Header overlay hook (only for multi mode)
+  const headerOverlay = useHeaderOverlay({
+    mode: props.mode === "multi" ? "overlay" : "scroll",
+    isFocused,
+  })
+
+  // Session sync hook
+  useSessionSync({
+    sessionId,
+    directoryMatches: sdkDirectoryMatches,
+    onNotFound:
+      props.mode === "single"
+        ? () => navigate(`/${params.dir}/session`, { replace: true })
+        : undefined,
+  })
+
+  // Status
+  const idle = { type: "idle" as const }
+  const status = createMemo(() => sync.data.session_status[sessionId() ?? ""] ?? idle)
+  const working = createMemo(
+    () =>
+      status().type !== "idle" &&
+      sessionMessages.activeMessage()?.id === sessionMessages.lastUserMessage()?.id,
+  )
+
+  createEffect(
+    on(
+      () => working(),
+      (isWorking, prevWorking) => {
+        if (props.mode !== "multi") return
+        if (isWorking) {
+          setStore("stepsExpanded", true)
+        } else if (prevWorking) {
+          setStore("stepsExpanded", false)
+        }
+      },
+    ),
+  )
+
+  // Sync agent/model from last message
+  createEffect(
+    on(
+      () => sessionMessages.lastUserMessage()?.id,
+      () => {
+        const msg = sessionMessages.lastUserMessage()
+        if (!msg) return
+        if (msg.agent) local.agent.set(msg.agent)
+        if (msg.model) local.model.set(msg.model)
+      },
+    ),
+  )
+
+  // Reset message ID when new message arrives
+  createEffect(
+    on(
+      () => sessionMessages.visibleUserMessages().at(-1)?.id,
+      (lastId, prevLastId) => {
+        if (lastId && prevLastId && lastId > prevLastId) {
+          sessionMessages.resetToLast()
+        }
+      },
+      { defer: true },
+    ),
+  )
+
+  // Reset user interaction on session change
+  createEffect(
+    on(
+      () => sessionId(),
+      () => {
+        setStore("userInteracted", false)
+      },
+    ),
+  )
+
+  // Session commands (only if enabled/focused)
+  useSessionCommands({
+    sessionId,
+    isEnabled: props.mode === "multi" ? isFocused : () => true,
+    onNavigateMessage: sessionMessages.navigateByOffset,
+    onToggleSteps: () => setStore("stepsExpanded", (x) => !x),
+    onResetMessageToLast: sessionMessages.resetToLast,
+    setActiveMessage: (msg) => sessionMessages.setActiveMessage(msg as UserMessage | undefined),
+    userMessages: sessionMessages.userMessages,
+    visibleUserMessages: sessionMessages.visibleUserMessages,
+  })
+
+  // Auto-focus input on keydown (single mode only)
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (props.mode !== "single") return
+    const activeElement = document.activeElement as HTMLElement | undefined
+    if (activeElement) {
+      const isProtected = activeElement.closest("[data-prevent-autofocus]")
+      const isInput =
+        /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) || activeElement.isContentEditable
+      if (isProtected || isInput) return
+    }
+    if (dialog.active) return
+
+    const inputRef = props.promptInputRef?.()
+    if (activeElement === inputRef) {
+      if (event.key === "Escape") inputRef?.blur()
+      return
+    }
+
+    if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
+      inputRef?.focus()
+    }
+  }
+
+  onMount(() => {
+    if (props.mode === "single") {
+      document.addEventListener("keydown", handleKeyDown)
+    }
+  })
+
+  onCleanup(() => {
+    if (props.mode === "single") {
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  })
+
+  // Computed: show tabs panel
+  const contextOpen = createMemo(
+    () => tabs().active() === "context" || tabs().all().includes("context"),
+  )
+  const showTabs = createMemo(
+    () => layout.review.opened() && (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
+  )
+
+  function handleProjectSelect(directory: string) {
+    props.onDirectoryChange?.(directory)
+    if (props.mode === "multi" && props.paneId && multiPane) {
+      multiPane.setFocused(props.paneId)
+    }
+  }
+
+  // New session view
+  const NewSessionView = () => (
+    <div class="size-full flex flex-col pb-45 justify-end items-start gap-4 flex-[1_0_0] self-stretch max-w-200 mx-auto px-6">
+      <div class="text-20-medium text-text-weaker">New session</div>
+      <div class="flex justify-center items-center gap-3">
+        <Icon name="folder" size="small" />
+        <div class="text-12-medium text-text-weak">
+          {getDirectory(sync.data.path.directory)}
+          <span class="text-text-strong">{getFilename(sync.data.path.directory)}</span>
+        </div>
+      </div>
+      <Show when={sync.project}>
+        {(project) => (
+          <div class="flex justify-center items-center gap-3">
+            <Icon name="pencil-line" size="small" />
+            <div class="text-12-medium text-text-weak">
+              Last modified&nbsp;
+              <span class="text-text-strong">
+                {DateTime.fromMillis(project().time.updated ?? project().time.created).toRelative()}
+              </span>
+            </div>
+          </div>
+        )}
+      </Show>
+      <Show when={props.mode === "multi"}>
+        <MultiPaneProjectList
+          currentDirectory={expectedDirectory}
+          onSelect={handleProjectSelect}
+        />
+      </Show>
+    </div>
+  )
+
+  // Desktop session content
+  const DesktopSessionContent = () => (
+    <Show when={sessionId()} fallback={<NewSessionView />}>
+      <div class="flex items-start justify-start h-full min-h-0">
+        <SessionMessageRail
+          messages={sessionMessages.visibleUserMessages()}
+          current={sessionMessages.activeMessage()}
+          onMessageSelect={sessionMessages.setActiveMessage}
+          wide={!showTabs()}
+        />
+        <Show when={sessionMessages.activeMessage()}>
+          <SessionTurn
+            sessionID={sessionId()!}
+            messageID={sessionMessages.activeMessage()!.id}
+            lastUserMessageID={sessionMessages.lastUserMessage()?.id}
+            stepsExpanded={store.stepsExpanded}
+            onStepsExpandedToggle={() => setStore("stepsExpanded", (x) => !x)}
+            onUserInteracted={() => setStore("userInteracted", true)}
+            classes={{
+              root: "pb-20 flex-1 min-w-0",
+              content: "pb-20",
+              container:
+                "w-full " +
+                (!showTabs()
+                  ? "max-w-200 mx-auto px-6"
+                  : sessionMessages.visibleUserMessages().length > 1
+                    ? "pr-6 pl-18"
+                    : "px-6"),
+            }}
+          />
+        </Show>
+      </div>
+    </Show>
+  )
+
+  // Multi mode container styles
+  const multiContainerClass = () =>
+    props.mode === "multi"
+      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
+      : "relative bg-background-base size-full overflow-hidden flex flex-col"
+
+  const multiContainerClassList = () =>
+    props.mode === "multi"
+      ? {
+          "ring-1 ring-border-accent-base": isFocused(),
+          "opacity-60": !isFocused(),
+        }
+      : {}
+
+  const handleMultiPaneMouseDown = (event: MouseEvent) => {
+    if (props.mode !== "multi" || !props.paneId || !multiPane) return
+    const target = event.target as HTMLElement
+    const isInteractive = target.closest('button, input, select, textarea, [contenteditable], [role="button"]')
+    if (!isInteractive) {
+      multiPane.setFocused(props.paneId)
+    }
+  }
+
+  return (
+    <div
+      ref={headerOverlay.containerRef}
+      class={multiContainerClass()}
+      classList={multiContainerClassList()}
+      onMouseDown={props.mode === "multi" ? handleMultiPaneMouseDown : undefined}
+      onMouseEnter={props.mode === "multi" ? headerOverlay.handleMouseEnter : undefined}
+      onMouseLeave={props.mode === "multi" ? headerOverlay.handleMouseLeave : undefined}
+      onMouseMove={props.mode === "multi" ? headerOverlay.handleMouseMove : undefined}
+    >
+      {/* Header */}
+      <Show when={props.mode === "single"}>
+        <SessionPaneHeader
+          mode="single"
+          directory={props.directory}
+          sessionId={sessionId()}
+        />
+      </Show>
+      <Show when={props.mode === "multi"}>
+        <div
+          class="absolute top-0 left-0 right-0 z-10 transition-opacity duration-150"
+          classList={{
+            "opacity-100 pointer-events-auto": headerOverlay.showHeader(),
+            "opacity-0 pointer-events-none": !headerOverlay.showHeader(),
+          }}
+          onMouseEnter={() => headerOverlay.setIsOverHeader(true)}
+          onMouseLeave={() => headerOverlay.setIsOverHeader(false)}
+          onFocusIn={() => headerOverlay.setHeaderHasFocus(true)}
+          onFocusOut={(e) => {
+            const relatedTarget = e.relatedTarget as HTMLElement | null
+            if (!e.currentTarget.contains(relatedTarget)) {
+              headerOverlay.setHeaderHasFocus(false)
+            }
+          }}
+        >
+          <SessionPaneHeader
+            mode="multi"
+            paneId={props.paneId}
+            directory={props.directory}
+            sessionId={sessionId()}
+            onSessionChange={props.onSessionChange}
+            onDirectoryChange={props.onDirectoryChange}
+            onClose={props.onClose}
+          />
+        </div>
+      </Show>
+
+      {/* Mobile view */}
+      <MobileView
+        sessionId={sessionId()}
+        visibleUserMessages={sessionMessages.visibleUserMessages}
+        lastUserMessage={sessionMessages.lastUserMessage}
+        diffs={diffs}
+        working={working}
+        onUserInteracted={() => setStore("userInteracted", true)}
+        newSessionView={NewSessionView}
+      />
+
+      {/* Desktop view */}
+      <div
+        class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}
+      >
+        <div
+          class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full bg-background-stronger"
+          style={{
+            width: showTabs() ? `${layout.session.width()}px` : "100%",
+          }}
+        >
+          <div class="flex-1 min-h-0 overflow-hidden">
+            <DesktopSessionContent />
+          </div>
+          <Show when={showTabs()}>
+            <ResizeHandle
+              direction="horizontal"
+              size={layout.session.width()}
+              min={450}
+              max={window.innerWidth * 0.45}
+              onResize={layout.session.resize}
+            />
+          </Show>
+        </div>
+
+        {/* Review panel */}
+        <Show when={showTabs()}>
+          <ReviewPanel
+            sessionKey={sessionKey()}
+            sessionId={sessionId()}
+            diffs={diffs()}
+            sessionInfo={info()}
+            activeDraggable={store.activeDraggable}
+            onDragStart={(id) => setStore("activeDraggable", id)}
+            onDragEnd={() => setStore("activeDraggable", undefined)}
+          />
+        </Show>
+      </div>
+
+    </div>
+  )
+}
+
+export { SessionPaneHeader } from "./header"
+export { ReviewPanel } from "./review-panel"
+export { ContextTab } from "./context-tab"
+export { MobileView } from "./mobile-view"

@@ -4,6 +4,8 @@ import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
 import { useLayout } from "@/context/layout"
+import { useGlobalSync } from "@/context/global-sync"
+import { HomeContent } from "@/components/home-content"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { SDKProvider, useSDK } from "@/context/sdk"
@@ -30,6 +32,90 @@ export type PaneCache = {
   variant?: string
 }
 export const paneCache = new Map<string, PaneCache>()
+
+// Provider wrapper for each pane (provides Local/Terminal context needed by SessionPane)
+function PaneSyncedProviders(props: { paneId: string; directory: string; children: any }) {
+  const sync = useSync()
+  const sdk = useSDK()
+  const respond = (input: { sessionID: string; permissionID: string; response: "once" | "always" | "reject" }) =>
+    sdk.client.permission.respond(input)
+
+  return (
+    <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
+      <LocalProvider>
+        <TerminalProvider paneId={props.paneId}>
+          <PromptProvider paneId={props.paneId}>
+            {props.children}
+          </PromptProvider>
+        </TerminalProvider>
+      </LocalProvider>
+    </DataProvider>
+  )
+}
+
+// Empty pane content when no directory is selected
+function EmptyPaneContent(props: { paneId: string; isFocused: () => boolean }) {
+  const multiPane = useMultiPane()
+  const layout = useLayout()
+  const globalSync = useGlobalSync()
+
+  const mostRecentProject = createMemo(() => {
+    const sorted = globalSync.data.project.toSorted(
+      (a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created),
+    )
+    return sorted[0]?.worktree
+  })
+
+  const [selectedProject, setSelectedProject] = createSignal<string | undefined>(undefined)
+  const effectiveProject = createMemo(
+    () => selectedProject() ?? layout.projects.list()[0]?.worktree ?? mostRecentProject(),
+  )
+
+  function handleSelectProject(directory: string) {
+    setSelectedProject(directory)
+    layout.projects.open(directory)
+    multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
+    multiPane.setFocused(props.paneId)
+  }
+
+  function handleClose() {
+    multiPane.removePane(props.paneId)
+  }
+
+  return (
+    <div
+      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
+      classList={{
+        "ring-1 ring-border-accent-base": props.isFocused(),
+        "opacity-60": !props.isFocused(),
+      }}
+      onMouseDown={() => multiPane.setFocused(props.paneId)}
+    >
+      <header
+        class="h-8 shrink-0 bg-background-base border-b flex items-center px-2 gap-1 justify-between"
+        classList={{
+          "border-border-accent-base": props.isFocused(),
+          "border-border-weak-base": !props.isFocused(),
+        }}
+      >
+        <div class="text-12-regular text-text-weak">New Tab</div>
+        <div class="flex items-center">
+          <IconButton icon="plus" variant="ghost" onClick={() => multiPane.addPane()} />
+          <Show when={multiPane.panes().length > 1}>
+            <IconButton icon="close" variant="ghost" onClick={handleClose} />
+          </Show>
+        </div>
+      </header>
+      <div class="flex-1 min-h-0">
+        <HomeContent
+          variant="pane"
+          selectedProject={effectiveProject()}
+          onSelectProject={handleSelectProject}
+        />
+      </div>
+    </div>
+  )
+}
 
 // Inner component that has access to terminal context
 function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) {
@@ -308,9 +394,33 @@ function MultiPaneContent() {
       >
         <PaneGrid
           panes={visiblePanes()}
-          renderPane={(pane) => (
-            <SessionPane paneId={pane.id} directory={pane.directory} sessionId={pane.sessionId} />
-          )}
+          renderPane={(pane) => {
+            const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+            return (
+              <Show when={pane.directory} keyed fallback={
+                <EmptyPaneContent paneId={pane.id} isFocused={isFocused} />
+              }>
+                {(directory) => (
+                  <SDKProvider directory={directory}>
+                    <SyncProvider>
+                      <PaneSyncedProviders paneId={pane.id} directory={directory}>
+                        <SessionPane
+                          mode="multi"
+                          paneId={pane.id}
+                          directory={directory}
+                          sessionId={pane.sessionId}
+                          isFocused={isFocused}
+                          onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
+                          onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
+                          onClose={() => multiPane.removePane(pane.id)}
+                        />
+                      </PaneSyncedProviders>
+                    </SyncProvider>
+                  </SDKProvider>
+                )}
+              </Show>
+            )
+          }}
         />
         {/* Hide GlobalPromptWrapper during transition to prevent floating-ui errors */}
         <Show when={!isTransitioningToSingle()}>
