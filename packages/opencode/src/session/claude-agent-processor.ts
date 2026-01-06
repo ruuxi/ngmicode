@@ -146,6 +146,9 @@ export namespace ClaudeAgentProcessor {
     images?: ImageInput[]
     agent: Agent.Info
     abort: AbortSignal
+    modelID?: string
+    /** Enable extended thinking with the specified token budget */
+    maxThinkingTokens?: number
   }
 
   interface ProcessContext {
@@ -572,6 +575,10 @@ export namespace ClaudeAgentProcessor {
           cwd: Instance.directory,
           permissionMode,
           pathToClaudeCodeExecutable: claudeExecutable,
+          // Pass the selected model (opus, sonnet, haiku, or default)
+          model: input.modelID as "opus" | "sonnet" | "haiku" | "default" | undefined,
+          // Enable extended thinking if specified
+          maxThinkingTokens: input.maxThinkingTokens,
           // Handle AskUserQuestion tool specially
           canUseTool: createCanUseTool(ctx),
           // Pass auth environment variables (OAuth token or API key)

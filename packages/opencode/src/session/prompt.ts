@@ -100,6 +100,8 @@ export namespace SessionPrompt {
       ),
     system: z.string().optional(),
     variant: z.string().optional(),
+    /** Enable extended thinking for Claude Code mode */
+    thinking: z.boolean().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -628,6 +630,8 @@ export namespace SessionPrompt {
         }
 
         try {
+          // Default to 10000 thinking tokens if enabled (or not explicitly disabled)
+          const thinkingEnabled = lastUser.thinking !== false
           const result = await ClaudeAgentProcessor.process({
             sessionID,
             assistantMessage,
@@ -635,6 +639,8 @@ export namespace SessionPrompt {
             images: images.length > 0 ? images : undefined,
             agent,
             abort,
+            modelID: model.id,
+            maxThinkingTokens: thinkingEnabled ? 10000 : undefined,
           })
 
           // Update assistant message with result
@@ -1095,6 +1101,7 @@ export namespace SessionPrompt {
       model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
       system: input.system,
       variant: input.variant,
+      thinking: input.thinking,
     }
 
     const parts = await Promise.all(

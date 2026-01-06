@@ -324,10 +324,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           user: (ModelKey & { visibility: "show" | "hide"; favorite?: boolean })[]
           recent: ModelKey[]
           variant?: Record<string, string | undefined>
+          /** Extended thinking enabled for Claude Code (default: true) */
+          thinking?: boolean
         }>({
           user: [],
           recent: [],
           variant: {},
+          thinking: true,
         }),
       )
 
@@ -539,6 +542,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               return
             }
             this.set(variants[index + 1])
+          },
+        },
+        /** Extended thinking for Claude Code */
+        thinking: {
+          /** Get current thinking state (default: true) */
+          current() {
+            return store.thinking !== false
+          },
+          /** Set thinking state */
+          set(enabled: boolean) {
+            setStore("thinking", enabled)
+          },
+          /** Toggle thinking state */
+          toggle() {
+            setStore("thinking", !this.current())
           },
         },
       }

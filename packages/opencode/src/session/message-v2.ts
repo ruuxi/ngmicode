@@ -308,6 +308,8 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    /** Enable extended thinking for Claude Code mode */
+    thinking: z.boolean().optional(),
   }).meta({
     ref: "UserMessage",
   })

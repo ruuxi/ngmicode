@@ -1075,11 +1075,11 @@ export namespace Provider {
 
     const providers = await list()
 
-    // Prefer Claude Code if available
+    // Prefer Claude Code if available (default maps to opus)
     if (providers["claude-agent"]) {
       return {
         providerID: "claude-agent",
-        modelID: "claude-agent",
+        modelID: "default",
       }
     }
 

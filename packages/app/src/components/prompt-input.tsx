@@ -1288,6 +1288,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
     const agent = currentAgent.name
     const variant = local.model.variant.current()
+    // Only pass thinking for Claude Code mode
+    const thinking = currentModel.provider.id === "claude-agent" ? local.model.thinking.current() : undefined
 
     if (isShellMode) {
       sdk.client.session
@@ -1363,6 +1365,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         messageID,
         parts: requestParts,
         variant,
+        thinking,
       })
       .catch((e) => {
         console.error("Failed to send prompt", e)
