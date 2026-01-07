@@ -1,4 +1,4 @@
-# OpenCode - Claude Code Edition
+# NGMI - This is for my personal use to develop faster. I didn't want to use TUI, and I wanted to be able to switch between opencode, claude code, oh my opencode seamlessly.
 
 A fork of [OpenCode](https://github.com/anomalyco/opencode) optimized for Claude-focused desktop workflows.
 
