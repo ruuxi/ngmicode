@@ -45,6 +45,7 @@ export interface SessionPaneProps {
   onDirectoryChange?: (directory: string) => void
   onClose?: () => void
   promptInputRef?: Accessor<HTMLDivElement | undefined>
+  reviewMode?: "pane" | "global"
 }
 
 export function SessionPane(props: SessionPaneProps) {
@@ -232,8 +233,12 @@ export function SessionPane(props: SessionPaneProps) {
   const contextOpen = createMemo(
     () => tabs().active() === "context" || tabs().all().includes("context"),
   )
+  const allowLocalReview = createMemo(() => props.reviewMode !== "global")
   const showTabs = createMemo(
-    () => layout.review.opened() && (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
+    () =>
+      allowLocalReview() &&
+      layout.review.opened() &&
+      (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
   )
 
   const showHomeScreen = createMemo(() => props.mode === "multi" && !sessionId())

@@ -1,8 +1,9 @@
-import { Show, createMemo, onMount, createEffect, on, For, onCleanup } from "solid-js"
+import { Show, createMemo, onMount, createEffect, on, For, onCleanup, createSignal } from "solid-js"
 import { useSearchParams } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
+import { ReviewPanel } from "@/components/session-pane/review-panel"
 import { useLayout } from "@/context/layout"
 import { HomeScreen } from "@/components/home-screen"
 import { useGlobalSync } from "@/context/global-sync"
@@ -292,6 +293,44 @@ function GlobalPromptSynced(props: { paneId: string; directory: string; sessionI
   )
 }
 
+function GlobalReviewSynced(props: { paneId: string; directory: string; sessionId?: string }) {
+  const layout = useLayout()
+  const sync = useSync()
+  const [activeDraggable, setActiveDraggable] = createSignal<string | undefined>(undefined)
+
+  const sessionKey = createMemo(
+    () =>
+      `multi-${props.paneId}-${props.directory}${props.sessionId ? "/" + props.sessionId : ""}`,
+  )
+  const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const contextOpen = createMemo(() => tabs().active() === "context" || tabs().all().includes("context"))
+  const diffs = createMemo(() => (props.sessionId ? (sync.data.session_diff[props.sessionId] ?? []) : []))
+  const sessionInfo = createMemo(() => (props.sessionId ? sync.session.get(props.sessionId) : undefined))
+  const showReview = createMemo(
+    () => layout.review.opened() && (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
+  )
+
+  return (
+    <LocalProvider>
+      <FileProvider>
+        <Show when={showReview()}>
+          <div class="shrink-0 h-full hidden md:block" style={{ width: "clamp(360px, 35vw, 520px)" }}>
+            <ReviewPanel
+              sessionKey={sessionKey()}
+              sessionId={props.sessionId}
+              diffs={diffs()}
+              sessionInfo={sessionInfo()}
+              activeDraggable={activeDraggable()}
+              onDragStart={(id) => setActiveDraggable(id)}
+              onDragEnd={() => setActiveDraggable(undefined)}
+            />
+          </div>
+        </Show>
+      </FileProvider>
+    </LocalProvider>
+  )
+}
+
 // Global prompt wrapper that switches based on focused pane
 function GlobalPromptWrapper() {
   const multiPane = useMultiPane()
@@ -305,6 +344,31 @@ function GlobalPromptWrapper() {
             <SDKProvider directory={directory()}>
               <SyncProvider>
                 <GlobalPromptSynced
+                  paneId={pane().id}
+                  directory={directory()}
+                  sessionId={pane().sessionId}
+                />
+              </SyncProvider>
+            </SDKProvider>
+          )}
+        </Show>
+      )}
+    </Show>
+  )
+}
+
+function GlobalReviewWrapper() {
+  const multiPane = useMultiPane()
+  const focused = createMemo(() => multiPane.focusedPane())
+
+  return (
+    <Show when={focused()}>
+      {(pane) => (
+        <Show when={pane().directory}>
+          {(directory) => (
+            <SDKProvider directory={directory()}>
+              <SyncProvider>
+                <GlobalReviewSynced
                   paneId={pane().id}
                   directory={directory()}
                   sessionId={pane().sessionId}
@@ -410,36 +474,42 @@ function MultiPaneContent() {
           </div>
         }
       >
-        <PaneGrid
-          panes={visiblePanes()}
-          renderPane={(pane) => {
-            const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
-            return (
-              <Show when={pane.directory} keyed fallback={
-                <HomePane paneId={pane.id} isFocused={isFocused} />
-              }>
-                {(directory) => (
-                  <SDKProvider directory={directory}>
-                    <SyncProvider>
-                      <PaneSyncedProviders paneId={pane.id} directory={directory}>
-                        <SessionPane
-                          mode="multi"
-                          paneId={pane.id}
-                          directory={directory}
-                          sessionId={pane.sessionId}
-                          isFocused={isFocused}
-                          onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
-                          onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
-                          onClose={() => multiPane.removePane(pane.id)}
-                        />
-                      </PaneSyncedProviders>
-                    </SyncProvider>
-                  </SDKProvider>
-                )}
-              </Show>
-            )
-          }}
-        />
+        <div class="flex-1 min-h-0 flex">
+          <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+            <PaneGrid
+              panes={visiblePanes()}
+              renderPane={(pane) => {
+                const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+                return (
+                  <Show when={pane.directory} keyed fallback={
+                    <HomePane paneId={pane.id} isFocused={isFocused} />
+                  }>
+                    {(directory) => (
+                      <SDKProvider directory={directory}>
+                        <SyncProvider>
+                          <PaneSyncedProviders paneId={pane.id} directory={directory}>
+                            <SessionPane
+                              mode="multi"
+                              paneId={pane.id}
+                              directory={directory}
+                              sessionId={pane.sessionId}
+                              isFocused={isFocused}
+                              reviewMode="global"
+                              onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
+                              onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
+                              onClose={() => multiPane.removePane(pane.id)}
+                            />
+                          </PaneSyncedProviders>
+                        </SyncProvider>
+                      </SDKProvider>
+                    )}
+                  </Show>
+                )
+              }}
+            />
+          </div>
+          <GlobalReviewWrapper />
+        </div>
         <GlobalPromptWrapper />
       </Show>
     </div>

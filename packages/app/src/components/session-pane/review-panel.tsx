@@ -227,7 +227,11 @@ export function ReviewPanel(props: ReviewPanelProps) {
                   hideCloseButton
                 >
                   <div class="flex items-center gap-2">
-                    <SessionContextUsage variant="indicator" />
+                    <SessionContextUsage
+                      variant="indicator"
+                      sessionId={props.sessionId}
+                      sessionKey={props.sessionKey}
+                    />
                     <div>Context</div>
                   </div>
                 </Tabs.Trigger>
@@ -243,7 +247,7 @@ export function ReviewPanel(props: ReviewPanelProps) {
                     icon="plus-small"
                     variant="ghost"
                     iconSize="large"
-                    onClick={() => dialog.show(() => <DialogSelectFile />)}
+                    onClick={() => dialog.show(() => <DialogSelectFile sessionKey={props.sessionKey} />)}
                   />
                 </TooltipKeybind>
               </div>
