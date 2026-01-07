@@ -358,6 +358,26 @@ export function PaneGrid(props: PaneGridProps) {
     return id ? props.panes.find((p) => p.id === id) : undefined
   })
 
+  function paneStyle(index: number) {
+    const cols = layout().columns
+    const rows = layout().rows
+    const count = props.panes.length
+    if (rows < 2) return undefined
+    const remainder = count % cols
+    if (remainder === 0) return undefined
+    const rowAbove = rows - 1
+    const rowAboveStart = (rows - 2) * cols
+    const rowAboveEnd = rowAboveStart + cols - 1
+    if (index < rowAboveStart || index > rowAboveEnd) return undefined
+    const colIndex = index - rowAboveStart
+    if (colIndex < remainder) return undefined
+    const startCol = colIndex + 1
+    return {
+      "grid-column": `${startCol} / span 1`,
+      "grid-row": `${rowAbove} / span 2`,
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -389,10 +409,11 @@ export function PaneGrid(props: PaneGridProps) {
           }}
         >
           <For each={props.panes}>
-            {(pane) => (
+            {(pane, index) => (
               <div
                 ref={(el) => paneRefs.set(pane.id, el)}
                 class="relative min-w-0 min-h-0 overflow-hidden"
+                style={paneStyle(index())}
               >
                 {props.renderPane(pane)}
               </div>
