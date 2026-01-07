@@ -115,6 +115,7 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
       <HomeScreen
         hideLogo={hideLogo()}
         showRelativeTime={showRelativeTime()}
+        showThemePicker={props.isFocused()}
         onProjectSelected={handleProjectSelected}
         onNavigateMulti={handleNavigateMulti}
       />

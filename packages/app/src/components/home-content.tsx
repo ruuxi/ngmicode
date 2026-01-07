@@ -9,6 +9,7 @@ import { useServer } from "@/context/server"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogSelectServer } from "@/components/dialog-select-server"
 import { DateTime } from "luxon"
+import { ThemeDropup } from "@/components/theme-dropup"
 
 export type HomeContentVariant = "page" | "pane"
 
@@ -19,6 +20,7 @@ export interface HomeContentProps {
   selectedProject?: string
   hideLogo?: boolean
   showRelativeTime?: boolean
+  showThemePicker?: boolean
 }
 
 export function HomeContent(props: HomeContentProps) {
@@ -88,6 +90,9 @@ export function HomeContent(props: HomeContentProps) {
   const marginTop = () => (props.variant === "page" ? "mt-20" : "mt-12")
   const emptyMarginTop = () => (props.variant === "page" ? "mt-30" : "mt-20")
   const showRelativeTime = createMemo(() => (props.showRelativeTime ?? true) && !props.hideLogo)
+  const showThemePicker = createMemo(
+    () => props.variant === "page" && (props.showThemePicker ?? true),
+  )
 
   return (
     <Show
@@ -96,7 +101,7 @@ export function HomeContent(props: HomeContentProps) {
         <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
       }
     >
-      <div class="size-full flex flex-col">
+      <div class="size-full flex flex-col relative">
         <div class="flex-1 flex flex-col items-center justify-center">
           <div class={`flex flex-col items-center w-full ${maxWidth()} px-6`}>
             <Show when={!props.hideLogo}>
@@ -208,6 +213,13 @@ export function HomeContent(props: HomeContentProps) {
             </Switch>
           </div>
         </div>
+        <Show when={showThemePicker()}>
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 pb-6">
+            <div class={`pointer-events-auto mx-auto w-full ${maxWidth()} px-6 flex justify-end`}>
+              <ThemeDropup />
+            </div>
+          </div>
+        </Show>
       </div>
     </Show>
   )

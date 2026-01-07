@@ -52,6 +52,7 @@ export interface HomeScreenProps {
   onNavigateMulti?: () => void
   onProjectSelected?: (directory: string) => void
   showRelativeTime?: boolean
+  showThemePicker?: boolean
 }
 
 export function HomeScreen(props: HomeScreenProps) {
@@ -95,6 +96,7 @@ export function HomeScreen(props: HomeScreenProps) {
         onSelectProject={handleSelectProject}
         onNavigateMulti={props.onNavigateMulti}
         showRelativeTime={props.showRelativeTime}
+        showThemePicker={props.showThemePicker}
       />
     </div>
   )

@@ -26,6 +26,7 @@ import { useSessionMessages } from "@/hooks/use-session-messages"
 import { useSessionSync } from "@/hooks/use-session-sync"
 import { useSessionCommands } from "@/hooks/use-session-commands"
 import { HomeScreen } from "@/components/home-screen"
+import { ThemeDropup } from "@/components/theme-dropup"
 import { SessionPaneHeader } from "./header"
 import { ReviewPanel } from "./review-panel"
 import { ContextTab } from "./context-tab"
@@ -265,7 +266,7 @@ export function SessionPane(props: SessionPaneProps) {
 
   // New session view
   const NewSessionView = () => (
-    <div class="size-full flex flex-col pb-45 justify-end items-start gap-4 flex-[1_0_0] self-stretch max-w-200 mx-auto px-6">
+    <div class="relative size-full flex flex-col pb-45 justify-end items-start gap-4 flex-[1_0_0] self-stretch max-w-200 mx-auto px-6">
       <div class="text-20-medium text-text-weaker">New session</div>
       <div class="flex justify-center items-center gap-3">
         <Icon name="folder" size="small" />
@@ -287,6 +288,11 @@ export function SessionPane(props: SessionPaneProps) {
           </div>
         )}
       </Show>
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 pb-6">
+        <div class="pointer-events-auto mx-auto w-full max-w-200 px-6 flex justify-end">
+          <ThemeDropup />
+        </div>
+      </div>
     </div>
   )
 
@@ -480,6 +486,7 @@ export function SessionPane(props: SessionPaneProps) {
           selectedProject={expectedDirectory() || undefined}
           hideLogo={hidePaneLogo()}
           showRelativeTime={showRelativeTime()}
+          showThemePicker={isFocused()}
           onProjectSelected={handleProjectSelect}
           onNavigateMulti={() => multiPane?.addPane()}
         />
