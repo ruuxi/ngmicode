@@ -33,8 +33,25 @@ import { iife } from "@opencode-ai/util/iife"
 declare global {
   interface Window {
     __OPENCODE__?: { updaterEnabled?: boolean; port?: number }
+    __OPENCODE_SAFE_GET_COMPUTED_STYLE__?: boolean
   }
 }
+
+const ensureSafeGetComputedStyle = () => {
+  if (typeof window === "undefined") return
+  if (window.__OPENCODE_SAFE_GET_COMPUTED_STYLE__) return
+  if (typeof document === "undefined") return
+  const fallback = document.createElement("div")
+  const original = window.getComputedStyle.bind(window)
+  // floating-ui can call getComputedStyle with non-elements during unmount
+  window.getComputedStyle = ((element, pseudo) => {
+    if (element instanceof Element) return original(element, pseudo)
+    return original(fallback, pseudo)
+  }) as typeof window.getComputedStyle
+  window.__OPENCODE_SAFE_GET_COMPUTED_STYLE__ = true
+}
+
+ensureSafeGetComputedStyle()
 
 const defaultServerUrl = iife(() => {
   const param = new URLSearchParams(document.location.search).get("url")

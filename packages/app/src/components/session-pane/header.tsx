@@ -55,20 +55,25 @@ export function SessionPaneHeader(props: SessionPaneHeaderProps) {
 
   function navigateToProject(directory: string | undefined) {
     if (!directory) return
-    if (props.mode === "single") {
-      navigate(`/${base64Encode(directory)}`)
-    } else {
-      props.onDirectoryChange?.(directory)
+    const action = () => {
+      if (props.mode === "single") {
+        navigate(`/${base64Encode(directory)}`)
+      } else {
+        props.onDirectoryChange?.(directory)
+      }
     }
+    queueMicrotask(action)
   }
 
   function navigateToSession(session: Session | undefined) {
     if (props.mode === "single") {
       if (!session) return
-      navigate(`/${params.dir}/session/${session.id}`)
-    } else {
-      props.onSessionChange?.(session?.id)
+      queueMicrotask(() => navigate(`/${params.dir}/session/${session.id}`))
+      return
     }
+    queueMicrotask(() => {
+      props.onSessionChange?.(session?.id)
+    })
   }
 
   // Multi-pane specific

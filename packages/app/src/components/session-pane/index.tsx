@@ -14,6 +14,7 @@ import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { SessionMessageRail } from "@opencode-ai/ui/session-message-rail"
 import { Icon } from "@opencode-ai/ui/icon"
 import { DateTime } from "luxon"
+import { createDraggable, createDroppable } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useLocal } from "@/context/local"
@@ -112,6 +113,9 @@ export function SessionPane(props: SessionPaneProps) {
     mode: props.mode === "multi" ? "overlay" : "scroll",
     isFocused,
   })
+  const paneDraggable = props.mode === "multi" && props.paneId ? createDraggable(props.paneId) : undefined
+  const paneDroppable = props.mode === "multi" && props.paneId ? createDroppable(props.paneId) : undefined
+  const paneDragHandlers = paneDraggable ? paneDraggable.dragActivators : {}
 
   // Session sync hook
   useSessionSync({
@@ -245,17 +249,18 @@ export function SessionPane(props: SessionPaneProps) {
   const hidePaneLogo = createMemo(
     () => props.mode === "multi" && !!multiPane && multiPane.panes().length > 1,
   )
+  const showRelativeTime = createMemo(() => {
+    if (!multiPane) return true
+    return multiPane.panes().length <= 1
+  })
   const sessionTurnPadding = createMemo(() => (props.mode === "single" ? "pb-20" : "pb-0"))
-
-  function focusPane() {
-    if (props.mode !== "multi" || !props.paneId || !multiPane) return
-    multiPane.setFocused(props.paneId)
-  }
 
   function handleProjectSelect(directory: string) {
     if (props.mode !== "multi") return
     props.onDirectoryChange?.(directory)
-    focusPane()
+    if (multiPane && props.paneId) {
+      multiPane.setFocused(props.paneId)
+    }
   }
 
   // New session view
@@ -287,7 +292,7 @@ export function SessionPane(props: SessionPaneProps) {
 
   // Desktop session content
   const DesktopSessionContent = () => (
-    <Show when={sessionId()} fallback={<NewSessionView />}>
+    <Show when={sessionId()} fallback={props.mode === "single" ? <NewSessionView /> : null}>
       <div class="flex items-start justify-start h-full min-h-0">
         <SessionMessageRail
           messages={sessionMessages.visibleUserMessages()}
@@ -342,9 +347,18 @@ export function SessionPane(props: SessionPaneProps) {
     }
   }
 
+  function setContainerRef(el: HTMLDivElement) {
+    headerOverlay.containerRef(el)
+    if (paneDroppable) paneDroppable.ref(el)
+  }
+
+  function setHeaderDragRef(el: HTMLDivElement) {
+    if (paneDraggable) paneDraggable.ref(el)
+  }
+
   return (
     <div
-      ref={headerOverlay.containerRef}
+      ref={setContainerRef}
       class={multiContainerClass()}
       classList={multiContainerClassList()}
       onMouseDown={props.mode === "multi" ? handleMultiPaneMouseDown : undefined}
@@ -372,11 +386,15 @@ export function SessionPane(props: SessionPaneProps) {
       </Show>
       <Show when={props.mode === "multi"}>
         <div
+          ref={setHeaderDragRef}
           class="absolute top-0 left-0 right-0 z-40 transition-opacity duration-150"
           classList={{
             "opacity-100 pointer-events-auto": headerOverlay.showHeader(),
             "opacity-0 pointer-events-none": !headerOverlay.showHeader(),
+            "cursor-grab": !!paneDraggable,
+            "cursor-grabbing": paneDraggable?.isActiveDraggable,
           }}
+          {...paneDragHandlers}
           onMouseDown={(e) => {
             e.stopPropagation()
           }}
@@ -405,7 +423,7 @@ export function SessionPane(props: SessionPaneProps) {
       <Show
         when={showHomeScreen()}
         fallback={
-          <>
+          <div class="flex-1 min-h-0 flex flex-col">
             {/* Mobile view */}
             <MobileView
               sessionId={sessionId()}
@@ -418,9 +436,7 @@ export function SessionPane(props: SessionPaneProps) {
             />
 
             {/* Desktop view */}
-            <div
-              class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}
-            >
+            <div class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}>
               <div
                 class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full bg-background-stronger"
                 style={{
@@ -454,12 +470,13 @@ export function SessionPane(props: SessionPaneProps) {
                 />
               </Show>
             </div>
-          </>
+          </div>
         }
       >
         <HomeScreen
           selectedProject={expectedDirectory() || undefined}
           hideLogo={hidePaneLogo()}
+          showRelativeTime={showRelativeTime()}
           onProjectSelected={handleProjectSelect}
           onNavigateMulti={() => multiPane?.addPane()}
         />

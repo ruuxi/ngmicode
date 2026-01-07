@@ -20,6 +20,7 @@ export interface HomeContentProps {
   onNavigateMulti?: () => void
   selectedProject?: string
   hideLogo?: boolean
+  showRelativeTime?: boolean
 }
 
 export function HomeContent(props: HomeContentProps) {
@@ -36,6 +37,7 @@ export function HomeContent(props: HomeContentProps) {
     )
     return sorted[0]?.worktree
   })
+  const defaultProject = createMemo(() => sync.data.path.directory)
 
   // Track selected project (auto-selects most recent on page variant)
   const [internalSelected, setInternalSelected] = createSignal<string | undefined>(undefined)
@@ -43,7 +45,7 @@ export function HomeContent(props: HomeContentProps) {
     if (props.selectedProject !== undefined) return props.selectedProject
     const internal = internalSelected()
     if (internal) return internal
-    if (props.variant === "page") return mostRecentProject()
+    if (props.variant === "page") return mostRecentProject() || defaultProject()
     return undefined
   })
 
@@ -87,6 +89,7 @@ export function HomeContent(props: HomeContentProps) {
   const logoWidth = () => (props.variant === "page" ? "w-xl" : "w-48")
   const marginTop = () => (props.variant === "page" ? "mt-20" : "mt-12")
   const emptyMarginTop = () => (props.variant === "page" ? "mt-30" : "mt-20")
+  const showRelativeTime = createMemo(() => (props.showRelativeTime ?? true) && !props.hideLogo)
 
   return (
     <Show
@@ -166,11 +169,13 @@ export function HomeContent(props: HomeContentProps) {
                               </span>
                             </Show>
                             <Show when={!isSelected()}>
-                              <span class="text-14-regular text-text-weak">
-                                {DateTime.fromMillis(
-                                  project.time.updated ?? project.time.created,
-                                ).toRelative()}
-                              </span>
+                              <Show when={showRelativeTime()}>
+                                <span class="text-14-regular text-text-weak">
+                                  {DateTime.fromMillis(
+                                    project.time.updated ?? project.time.created,
+                                  ).toRelative()}
+                                </span>
+                              </Show>
                             </Show>
                           </Button>
                         )

@@ -131,6 +131,34 @@ function createDefaultEntry(): PromptEntry {
   }
 }
 
+function normalizeEntry(entry: PromptEntry | undefined): PromptEntry {
+  const fallback = createDefaultEntry()
+  if (!entry) return fallback
+  const prompt = Array.isArray(entry.prompt) ? entry.prompt : fallback.prompt
+  const context = entry.context
+  if (!context) {
+    return {
+      prompt,
+      cursor: entry.cursor,
+      context: {
+        activeTab: fallback.context.activeTab,
+        items: fallback.context.items,
+      },
+    }
+  }
+  const items = Array.isArray(context.items) ? context.items : fallback.context.items
+  const activeTab =
+    typeof context.activeTab === "boolean" ? context.activeTab : fallback.context.activeTab
+  return {
+    prompt,
+    cursor: entry.cursor,
+    context: {
+      activeTab,
+      items,
+    },
+  }
+}
+
 function keyForItem(item: ContextItem) {
   if (item.type !== "file") return item.type
   const start = item.selection?.startLine
@@ -157,15 +185,15 @@ function createPromptContext(paneId?: string | Accessor<string | undefined>) {
   const currentEntry = createMemo(() => {
     const pane = getPaneId()
     if (pane) {
-      return paneStore.entries[pane] ?? createDefaultEntry()
+      return normalizeEntry(paneStore.entries[pane])
     }
-    return store.entries[key()] ?? createDefaultEntry()
+    return normalizeEntry(store.entries[key()])
   })
 
   const updateEntry = (updater: (entry: PromptEntry) => PromptEntry) => {
     const pane = getPaneId()
     if (pane) {
-      const base = paneStore.entries[pane] ?? createDefaultEntry()
+      const base = normalizeEntry(paneStore.entries[pane])
       setPaneStore("entries", pane, updater(base))
       return
     }

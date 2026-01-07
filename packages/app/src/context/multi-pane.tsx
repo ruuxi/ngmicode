@@ -162,6 +162,23 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         )
       },
 
+      swapPanes(firstId: string, secondId: string) {
+        if (firstId === secondId) return
+        const firstIndex = store.panes.findIndex((pane) => pane.id === firstId)
+        if (firstIndex === -1) return
+        const secondIndex = store.panes.findIndex((pane) => pane.id === secondId)
+        if (secondIndex === -1) return
+        setStore(
+          "panes",
+          produce((panes) => {
+            const first = panes[firstIndex]
+            const second = panes[secondIndex]
+            panes[firstIndex] = second
+            panes[secondIndex] = first
+          }),
+        )
+      },
+
       focusPaneByIndex(index: number) {
         const pane = visiblePanes()[index]
         if (pane) {

@@ -22,6 +22,10 @@ import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { DragDropProvider, DragDropSensors, DragOverlay, closestCenter } from "@thisbeyond/solid-dnd"
+import type { DragEvent } from "@thisbeyond/solid-dnd"
+import { truncateDirectoryPrefix } from "@opencode-ai/util/path"
+import { getDraggableId } from "@/utils/solid-dnd"
 
 const MAX_TERMINAL_HEIGHT = 200
 
@@ -60,6 +64,8 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
   const multiPane = useMultiPane()
   const globalSync = useGlobalSync()
   const hideLogo = createMemo(() => multiPane.panes().length > 1)
+  const showRelativeTime = createMemo(() => multiPane.panes().length <= 1)
+  const [autoSelected, setAutoSelected] = createSignal(false)
 
   function handleProjectSelected(directory: string) {
     multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
@@ -72,12 +78,16 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
     )
     return sorted[0]?.worktree
   })
+  const defaultProject = createMemo(() => globalSync.data.path.directory)
+  const preferredProject = createMemo(() => mostRecentProject() || defaultProject())
 
   createEffect(() => {
-    const candidate = mostRecentProject()
-    if (candidate) {
-      handleProjectSelected(candidate)
-    }
+    if (autoSelected()) return
+    if (!props.isFocused()) return
+    const candidate = preferredProject()
+    if (!candidate) return
+    setAutoSelected(true)
+    handleProjectSelected(candidate)
   })
 
   function handleNavigateMulti() {
@@ -109,6 +119,7 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
       />
       <HomeScreen
         hideLogo={hideLogo()}
+        showRelativeTime={showRelativeTime()}
         onProjectSelected={handleProjectSelected}
         onNavigateMulti={handleNavigateMulti}
       />
@@ -123,6 +134,7 @@ function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) 
   const terminal = useTerminal()
   const prompt = usePrompt()
   const local = useLocal()
+  const sdk = useSDK()
   let editorRef: HTMLDivElement | undefined
 
   function handleSessionCreated(sessionId: string) {
@@ -205,6 +217,17 @@ function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) 
       editorRef?.focus()
     })
   })
+
+  createEffect(
+    on(
+      () => [props.paneId, props.sessionId, sdk.directory],
+      () => {
+        requestAnimationFrame(() => {
+          editorRef?.focus()
+        })
+      },
+    ),
+  )
 
   return (
     <div class="shrink-0 flex flex-col border-t border-border-weak-base bg-background-base">
@@ -385,12 +408,46 @@ function GlobalReviewWrapper() {
 function MultiPaneContent() {
   const multiPane = useMultiPane()
   const layout = useLayout()
+  const globalSync = useGlobalSync()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [activePaneDraggable, setActivePaneDraggable] = createSignal<string | undefined>(undefined)
 
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
   const hasPanes = createMemo(() => multiPane.panes().length > 0)
+  const activePane = createMemo(() => {
+    const id = activePaneDraggable()
+    if (!id) return undefined
+    return multiPane.panes().find((pane) => pane.id === id)
+  })
+  const activeTitle = createMemo(() => {
+    const pane = activePane()
+    if (!pane) return undefined
+    const sessionId = pane.sessionId
+    if (!sessionId) return "New session"
+    const directory = pane.directory
+    if (!directory) return "New session"
+    const child = globalSync.child(directory)
+    const store = child[0]
+    const session = store.session.find((candidate) => candidate.id === sessionId)
+    if (session?.title) return session.title
+    return sessionId
+  })
+  const activeProject = createMemo(() => {
+    const pane = activePane()
+    if (!pane) return undefined
+    const directory = pane.directory
+    if (!directory) return undefined
+    return truncateDirectoryPrefix(directory)
+  })
 
-  const getLastProject = () => layout.projects.list()[0]?.worktree
+  const recentProject = createMemo(() => {
+    const sorted = globalSync.data.project.toSorted(
+      (a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created),
+    )
+    return sorted[0]?.worktree
+  })
+  const defaultProject = createMemo(() => globalSync.data.path.directory)
+  const getLastProject = () => recentProject() || defaultProject() || layout.projects.list()[0]?.worktree
 
   onMount(() => {
     const rawDir = searchParams.dir
@@ -438,13 +495,14 @@ function MultiPaneContent() {
         // Only handle if we already have panes (not initial load)
         if (multiPane.panes().length === 0) return
 
-        if (typeof params.session === "string" && typeof params.dir === "string") {
+        if (typeof params.dir === "string") {
           const directory = decodeURIComponent(params.dir)
-          const sessionId = params.session
+          const sessionId = typeof params.session === "string" ? params.session : undefined
           const focusedPane = multiPane.focusedPane()
           if (focusedPane) {
             layout.projects.open(directory)
             multiPane.updatePane(focusedPane.id, { directory, sessionId })
+            multiPane.setFocused(focusedPane.id)
           }
           setSearchParams({ session: undefined, dir: undefined })
         }
@@ -454,6 +512,25 @@ function MultiPaneContent() {
 
   function handleAddFirstPane() {
     multiPane.addPane(getLastProject())
+  }
+
+  function handlePaneDragStart(event: unknown) {
+    const id = getDraggableId(event)
+    if (!id) return
+    setActivePaneDraggable(id)
+    multiPane.setFocused(id)
+  }
+
+  function handlePaneDragEnd(event: DragEvent) {
+    setActivePaneDraggable(undefined)
+    const draggable = event.draggable
+    if (!draggable) return
+    const droppable = event.droppable
+    if (!droppable) return
+    const fromId = draggable.id.toString()
+    const toId = droppable.id.toString()
+    if (fromId === toId) return
+    multiPane.swapPanes(fromId, toId)
   }
 
   return (
@@ -476,37 +553,56 @@ function MultiPaneContent() {
       >
         <div class="flex-1 min-h-0 flex">
           <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-            <PaneGrid
-              panes={visiblePanes()}
-              renderPane={(pane) => {
-                const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
-                return (
-                  <Show when={pane.directory} keyed fallback={
-                    <HomePane paneId={pane.id} isFocused={isFocused} />
-                  }>
-                    {(directory) => (
-                      <SDKProvider directory={directory}>
-                        <SyncProvider>
-                          <PaneSyncedProviders paneId={pane.id} directory={directory}>
-                            <SessionPane
-                              mode="multi"
-                              paneId={pane.id}
-                              directory={directory}
-                              sessionId={pane.sessionId}
-                              isFocused={isFocused}
-                              reviewMode="global"
-                              onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
-                              onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
-                              onClose={() => multiPane.removePane(pane.id)}
-                            />
-                          </PaneSyncedProviders>
-                        </SyncProvider>
-                      </SDKProvider>
-                    )}
-                  </Show>
-                )
-              }}
-            />
+            <DragDropProvider
+              onDragStart={handlePaneDragStart}
+              onDragEnd={handlePaneDragEnd}
+              collisionDetector={closestCenter}
+            >
+              <DragDropSensors />
+              <PaneGrid
+                panes={visiblePanes()}
+                renderPane={(pane) => {
+                  const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+                  return (
+                    <Show when={pane.directory} fallback={
+                      <HomePane paneId={pane.id} isFocused={isFocused} />
+                    }>
+                      {(directory) => (
+                        <SDKProvider directory={directory()!}>
+                          <SyncProvider>
+                            <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
+                              <SessionPane
+                                mode="multi"
+                                paneId={pane.id}
+                                directory={directory()!}
+                                sessionId={pane.sessionId}
+                                isFocused={isFocused}
+                                reviewMode="global"
+                                onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
+                                onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
+                                onClose={() => multiPane.removePane(pane.id)}
+                              />
+                            </PaneSyncedProviders>
+                          </SyncProvider>
+                        </SDKProvider>
+                      )}
+                    </Show>
+                  )
+                }}
+              />
+              <DragOverlay>
+                <Show when={activeTitle()}>
+                  {(title) => (
+                    <div class="pointer-events-none rounded-md border border-border-weak-base bg-background-base px-3 py-2 shadow-xs-border-base">
+                      <div class="text-12-medium text-text-strong">{title()}</div>
+                      <Show when={activeProject()}>
+                        {(project) => <div class="text-11-regular text-text-weak">{project()}</div>}
+                      </Show>
+                    </div>
+                  )}
+                </Show>
+              </DragOverlay>
+            </DragDropProvider>
           </div>
           <GlobalReviewWrapper />
         </div>

@@ -27,6 +27,14 @@ import { batch, createContext, useContext, onMount, type ParentProps, Switch, Ma
 import { showToast } from "@opencode-ai/ui/toast"
 import { getFilename } from "@opencode-ai/util/path"
 
+function normalizeDirectory(input: string | undefined) {
+  if (!input) return ""
+  const normalized = input.replace(/\\/g, "/").replace(/\/+$/, "")
+  if (!normalized) return ""
+  if (!/[a-zA-Z]:/.test(normalized) && !input.includes("\\")) return normalized
+  return normalized.toLowerCase()
+}
+
 export type AskUserQuestionRequest = {
   id: string
   sessionID: string
@@ -140,14 +148,32 @@ function createGlobalSync() {
   async function loadSessions(directory: string) {
     const [store, setStore] = child(directory)
     globalSDK.client.session
-      .list({ directory })
+      .list({ query: { directory } })
       .then((x) => {
+        const root = normalizeDirectory(directory)
+        const fallback = normalizeDirectory(globalStore.path.directory)
+        const projectById = globalStore.project.find((p) => p.id === store.project)
+        const projectByPath = globalStore.project.find((p) => normalizeDirectory(p.worktree) === root)
+        const project = projectById ?? projectByPath
+        const sandboxes = (project?.sandboxes ?? []).map(normalizeDirectory).filter(Boolean)
+        const allowed = new Set([root, ...sandboxes].filter(Boolean))
+        const allow = (input: string | undefined) => {
+          const dir = normalizeDirectory(input)
+          if (dir) return allowed.has(dir)
+          if (!fallback) return false
+          return root === fallback
+        }
         const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000
         const nonArchived = (x.data ?? [])
           .filter((s) => !!s?.id)
           .filter((s) => !s.time?.archived)
           .slice()
           .sort((a, b) => a.id.localeCompare(b.id))
+          .filter((s) => allow(s.directory))
+          .map((session) => {
+            if (session.directory) return session
+            return { ...session, directory }
+          })
         // Include up to the limit, plus any updated in the last 4 hours
         const sessions = nonArchived.filter((s, i) => {
           if (i < store.limit) return true

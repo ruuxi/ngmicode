@@ -13,7 +13,7 @@ import {
   type JSX,
 } from "solid-js"
 import { DateTime } from "luxon"
-import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
+import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
@@ -80,7 +80,6 @@ export default function Layout(props: ParentProps) {
   onCleanup(() => xlQuery.removeEventListener("change", handleViewportChange))
 
   const params = useParams()
-  const location = useLocation()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const layout = useLayout()
@@ -181,7 +180,9 @@ export default function Layout(props: ParentProps) {
       const sessionTitle = session?.title ?? "New session"
       const projectName = getFilename(directory)
       const description = `${sessionTitle} in ${projectName} needs permission`
-      const href = `/${base64Encode(directory)}/session/${perm.sessionID}`
+      const href = isMultiRoute()
+        ? `/multi?session=${perm.sessionID}&dir=${encodeURIComponent(directory)}`
+        : `/${base64Encode(directory)}/session/${perm.sessionID}`
 
       const now = Date.now()
       const lastAlerted = alertedAtBySession.get(sessionKey) ?? 0
@@ -246,6 +247,37 @@ export default function Layout(props: ParentProps) {
       }
     })
   })
+
+  function normalizeDirectory(input: string | undefined) {
+    if (!input) return ""
+    const normalized = input.replace(/\\/g, "/").replace(/\/+$/, "")
+    if (!normalized) return ""
+    if (!/[a-zA-Z]:/.test(normalized) && !input.includes("\\")) return normalized
+    return normalized.toLowerCase()
+  }
+
+  function sameDirectory(a: string | undefined, b: string | undefined) {
+    return normalizeDirectory(a) === normalizeDirectory(b)
+  }
+
+  function projectDirectories(project: LocalProject) {
+    const sandboxes = project.sandboxes ?? []
+    return [project.worktree, ...sandboxes].filter(Boolean)
+  }
+
+  function resolveSessionDirectory(sessionDirectory: string | undefined, project: LocalProject) {
+    const allowed = projectDirectories(project)
+    const match = allowed.find((dir) => sameDirectory(dir, sessionDirectory))
+    if (match) return match
+    const root = allowed[0]
+    if (root) return root
+    return globalSync.data.path.directory
+  }
+
+  function isMultiRoute() {
+    if (params.dir) return false
+    return true
+  }
 
   function sortSessions(a: Session, b: Session) {
     const now = Date.now()
@@ -321,6 +353,13 @@ export default function Layout(props: ParentProps) {
     }
 
     const targetSession = offset > 0 ? nextProjectSessions[0] : nextProjectSessions[nextProjectSessions.length - 1]
+    if (isMultiRoute()) {
+      const targetDir = targetSession.directory || nextProject.worktree
+      const dir = encodeURIComponent(targetDir)
+      navigate(`/multi?session=${targetSession.id}&dir=${dir}`)
+      queueMicrotask(() => scrollToSession(targetSession.id))
+      return
+    }
     navigate(`/${base64Encode(nextProject.worktree)}/session/${targetSession.id}`)
     queueMicrotask(() => scrollToSession(targetSession.id))
   }
@@ -482,13 +521,29 @@ export default function Layout(props: ParentProps) {
   function navigateToProject(directory: string | undefined) {
     if (!directory) return
     const lastSession = store.lastSession[directory]
+    if (isMultiRoute()) {
+      const dir = encodeURIComponent(directory)
+      const sessionParam = lastSession ? `&session=${lastSession}` : ""
+      navigate(`/multi?dir=${dir}${sessionParam}`)
+      layout.mobileSidebar.hide()
+      return
+    }
     navigate(`/${base64Encode(directory)}${lastSession ? `/session/${lastSession}` : ""}`)
     layout.mobileSidebar.hide()
   }
 
   function navigateToSession(session: Session | undefined) {
     if (!session) return
-    navigate(`/${params.dir}/session/${session?.id}`)
+    if (isMultiRoute()) {
+      const currentDir = params.dir ? base64Decode(params.dir) : undefined
+      const targetDir = session.directory || currentDir
+      if (!targetDir) return
+      const dir = encodeURIComponent(targetDir)
+      navigate(`/multi?session=${session.id}&dir=${dir}`)
+      layout.mobileSidebar.hide()
+      return
+    }
+    navigate(`/${params.dir}/session/${session.id}`)
     layout.mobileSidebar.hide()
   }
 
@@ -498,11 +553,21 @@ export default function Layout(props: ParentProps) {
   }
 
   function closeProject(directory: string) {
-    const index = layout.projects.list().findIndex((x) => x.worktree === directory)
-    const next = layout.projects.list()[index + 1]
+    const projects = layout.projects.list()
+    const index = projects.findIndex((x) => x.worktree === directory)
+    const next = projects[index + 1]
+    const currentDir = params.dir ? base64Decode(params.dir) : undefined
+    const project = projects.find((x) => x.worktree === directory)
+    const sandboxes = project?.sandboxes ?? []
+    const isSandboxActive = currentDir ? sandboxes.some((sandbox) => sameDirectory(sandbox, currentDir)) : false
+    const isActive = currentDir ? sameDirectory(currentDir, directory) || isSandboxActive : false
     layout.projects.close(directory)
-    if (next) navigateToProject(next.worktree)
-    else navigate("/")
+    if (!isActive) return
+    if (next) {
+      navigateToProject(next.worktree)
+      return
+    }
+    navigate("/")
   }
 
   function closeProjectDeferred(directory: string) {
@@ -664,19 +729,18 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const isMultiPaneMode = createMemo(() => location.pathname === "/multi")
-
   const SessionItem = (props: {
     session: Session
     slug: string
     project: LocalProject
     mobile?: boolean
   }): JSX.Element => {
+    const sessionDirectory = createMemo(() => resolveSessionDirectory(props.session.directory, props.project))
     const notification = useNotification()
     const updated = createMemo(() => DateTime.fromMillis(props.session.time.updated))
     const notifications = createMemo(() => notification.session.unseen(props.session.id))
     const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
-    const [sessionStore] = globalSync.child(props.session.directory)
+    const [sessionStore] = globalSync.child(sessionDirectory())
     const hasPermissions = createMemo(() => {
       const permissions = sessionStore.permission?.[props.session.id] ?? []
       if (permissions.length > 0) return true
@@ -693,27 +757,33 @@ export default function Layout(props: ParentProps) {
       const status = sessionStore.session_status[props.session.id]
       return status?.type === "busy" || status?.type === "retry"
     })
-
-    function handleSessionClick(e: MouseEvent) {
-      if (isMultiPaneMode()) {
-        e.preventDefault()
-        navigate(`/multi?session=${props.session.id}&dir=${encodeURIComponent(props.project.worktree)}`)
-      }
-    }
+    const isActive = createMemo(() => {
+      if (!params.dir || !params.id) return false
+      if (params.id !== props.session.id) return false
+      const currentDir = base64Decode(params.dir)
+      if (!sameDirectory(currentDir, sessionDirectory())) return false
+      return true
+    })
+    const sessionHref = createMemo(
+      () => `/multi?session=${props.session.id}&dir=${encodeURIComponent(sessionDirectory())}`,
+    )
 
     return (
       <>
         <div
           data-session-id={props.session.id}
           class="group/session relative w-full pr-2 py-1 rounded-md cursor-default transition-colors
-                 hover:bg-surface-raised-base-hover focus-within:bg-surface-raised-base-hover has-[.active]:bg-surface-raised-base-hover"
+                 hover:bg-surface-raised-base-hover focus-within:bg-surface-raised-base-hover"
           style={{ "padding-left": "16px" }}
+          classList={{
+            "bg-surface-raised-base-hover": isActive(),
+          }}
         >
           <Tooltip placement={props.mobile ? "bottom" : "right"} value={props.session.title} gutter={10}>
             <A
-              href={`${props.slug}/session/${props.session.id}`}
-              onClick={handleSessionClick}
+              href={sessionHref()}
               class="flex flex-col min-w-0 text-left w-full focus:outline-none"
+              activeClass=""
             >
               <div class="flex items-center self-stretch gap-6 justify-between transition-[padding] group-hover/session:pr-7 group-focus-within/session:pr-7 group-active/session:pr-7">
                 <span
@@ -782,6 +852,9 @@ export default function Layout(props: ParentProps) {
     const sortable = createSortable(props.project.worktree)
     const showExpanded = createMemo(() => props.mobile || layout.sidebar.opened())
     const slug = createMemo(() => base64Encode(props.project.worktree))
+    const newSessionHref = createMemo(
+      () => `/multi?dir=${encodeURIComponent(props.project.worktree)}`,
+    )
     const name = createMemo(() => props.project.name || truncateDirectoryPrefix(props.project.worktree))
     const [store, setProjectStore] = globalSync.child(props.project.worktree)
     const sessions = createMemo(() => store.session.toSorted(sortSessions))
@@ -847,7 +920,7 @@ export default function Layout(props: ParentProps) {
                     </DropdownMenu.Portal>
                   </DropdownMenu>
                   <TooltipKeybind placement="top" title="New session" keybind={command.keybind("session.new")}>
-                    <IconButton as={A} href={`${slug()}/session`} icon="plus-small" variant="ghost" />
+                    <IconButton as={A} href={newSessionHref()} icon="plus-small" variant="ghost" />
                   </TooltipKeybind>
                 </div>
               </Button>
@@ -861,14 +934,15 @@ export default function Layout(props: ParentProps) {
                   <Show when={rootSessions().length === 0}>
                     <div
                       class="group/session relative w-full pl-4 pr-2 py-1 rounded-md cursor-default transition-colors
-                             hover:bg-surface-raised-base-hover focus-within:bg-surface-raised-base-hover has-[.active]:bg-surface-raised-base-hover"
+                             hover:bg-surface-raised-base-hover focus-within:bg-surface-raised-base-hover"
                     >
                       <div class="flex items-center self-stretch w-full">
                         <div class="flex-1 min-w-0">
                           <Tooltip placement={props.mobile ? "bottom" : "right"} value="New session">
                             <A
-                              href={`${slug()}/session`}
+                              href={newSessionHref()}
                               class="flex flex-col gap-1 min-w-0 text-left w-full focus:outline-none"
+                              activeClass=""
                             >
                               <div class="flex items-center self-stretch gap-6 justify-between">
                                 <span class="text-14-regular text-text-strong overflow-hidden text-ellipsis truncate">

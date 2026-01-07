@@ -30,13 +30,16 @@ export function PaneHeader(props: PaneHeaderProps) {
   const branch = createMemo(() => sync.data.vcs?.branch)
 
   function handleSessionSelect(session: Session | undefined) {
-    props.onSessionChange?.(session?.id)
+    queueMicrotask(() => {
+      props.onSessionChange?.(session?.id)
+    })
   }
 
   function handleDirectorySelect(directory: string | undefined) {
-    if (directory) {
+    if (!directory) return
+    queueMicrotask(() => {
       props.onDirectoryChange?.(directory)
-    }
+    })
   }
 
   function handleAddPane() {

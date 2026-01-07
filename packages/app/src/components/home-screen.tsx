@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createSignal, createEffect } from "solid-js"
 import { HomeContent } from "@/components/home-content"
 import { PromptInput } from "@/components/prompt-input"
 import { SDKProvider } from "@/context/sdk"
@@ -51,6 +51,7 @@ export interface HomeScreenProps {
   hideLogo?: boolean
   onNavigateMulti?: () => void
   onProjectSelected?: (directory: string) => void
+  showRelativeTime?: boolean
 }
 
 export function HomeScreen(props: HomeScreenProps) {
@@ -64,10 +65,18 @@ export function HomeScreen(props: HomeScreenProps) {
     )
     return sorted[0]?.worktree
   })
+  const defaultDirectory = createMemo(() => globalSync.data.path.directory)
+  const preferredProject = createMemo(() => mostRecent() || defaultDirectory())
 
-  const effectiveProject = createMemo(
-    () => props.selectedProject ?? selectedProject() ?? mostRecent(),
-  )
+  createEffect(() => {
+    if (props.selectedProject !== undefined) return
+    if (selectedProject() !== undefined) return
+    const candidate = preferredProject()
+    if (!candidate) return
+    setSelectedProject(candidate)
+  })
+
+  const effectiveProject = createMemo(() => props.selectedProject ?? selectedProject())
 
   function handleSelectProject(directory: string) {
     if (props.selectedProject === undefined) {
@@ -85,6 +94,7 @@ export function HomeScreen(props: HomeScreenProps) {
         hideLogo={props.hideLogo}
         onSelectProject={handleSelectProject}
         onNavigateMulti={props.onNavigateMulti}
+        showRelativeTime={props.showRelativeTime}
       />
     </div>
   )

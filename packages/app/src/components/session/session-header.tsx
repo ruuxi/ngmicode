@@ -37,12 +37,16 @@ export function SessionHeader() {
   const branch = createMemo(() => sync.data.vcs?.branch)
 
   function navigateToProject(directory: string) {
-    navigate(`/${base64Encode(directory)}`)
+    queueMicrotask(() => {
+      navigate(`/${base64Encode(directory)}`)
+    })
   }
 
   function navigateToSession(session: Session | undefined) {
     if (!session) return
-    navigate(`/${params.dir}/session/${session.id}`)
+    queueMicrotask(() => {
+      navigate(`/${params.dir}/session/${session.id}`)
+    })
   }
 
   return (
