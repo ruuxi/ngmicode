@@ -92,19 +92,18 @@ export function App() {
                             <Route path="/:dir" component={DirectoryLayout}>
                               <Route path="/" component={() => <Navigate href="session" />} />
                               <Route
-  path="/session/:id?"
-  component={(p) => (
-    <Show when={p.params.id ?? "new"} keyed>
-      <TerminalProvider>
-        <FileProvider>
-          <PromptProvider>
-            <Session />
-          </PromptProvider>
-        </FileProvider>
-      </TerminalProvider>
-    </Show>
-  )}
-/>                                )}
+                                path="/session/:id?"
+                                component={(p) => (
+                                  <Show when={p.params.id ?? "new"} keyed>
+                                    <TerminalProvider>
+                                      <FileProvider>
+                                        <PromptProvider>
+                                          <Session />
+                                        </PromptProvider>
+                                      </FileProvider>
+                                    </TerminalProvider>
+                                  </Show>
+                                )}
                               />
                             </Route>
                           </Router>
@@ -121,4 +120,3 @@ export function App() {
     </MetaProvider>
   )
 }
-

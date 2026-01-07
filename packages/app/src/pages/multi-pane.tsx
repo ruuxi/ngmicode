@@ -14,6 +14,7 @@ import { LocalProvider, useLocal } from "@/context/local"
 import { DataProvider } from "@opencode-ai/ui/context"
 import { TerminalProvider, useTerminal, type LocalPTY } from "@/context/terminal"
 import { PromptProvider, usePrompt, type Prompt } from "@/context/prompt"
+import { FileProvider } from "@/context/file"
 import { PromptInput } from "@/components/prompt-input"
 import { Terminal } from "@/components/terminal"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
@@ -43,9 +44,11 @@ function PaneSyncedProviders(props: { paneId: string; directory: string; childre
     <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
       <LocalProvider>
         <TerminalProvider paneId={props.paneId}>
-          <PromptProvider paneId={props.paneId}>
-            {props.children}
-          </PromptProvider>
+          <FileProvider>
+            <PromptProvider paneId={props.paneId}>
+              {props.children}
+            </PromptProvider>
+          </FileProvider>
         </TerminalProvider>
       </LocalProvider>
     </DataProvider>
@@ -278,9 +281,11 @@ function GlobalPromptSynced(props: { paneId: string; directory: string; sessionI
     <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={respond}>
       <LocalProvider>
         <TerminalProvider paneId={props.paneId}>
-          <PromptProvider paneId={props.paneId}>
-            <GlobalTerminalAndPrompt paneId={props.paneId} sessionId={props.sessionId} />
-          </PromptProvider>
+          <FileProvider>
+            <PromptProvider paneId={props.paneId}>
+              <GlobalTerminalAndPrompt paneId={props.paneId} sessionId={props.sessionId} />
+            </PromptProvider>
+          </FileProvider>
         </TerminalProvider>
       </LocalProvider>
     </DataProvider>

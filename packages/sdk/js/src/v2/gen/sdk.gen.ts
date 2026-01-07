@@ -1118,7 +1118,7 @@ export class Vcs extends HeyApiClient {
   }
 }
 
-export class Worktree extends HeyApiClient {
+export class SessionWorktree extends HeyApiClient {
   /**
    * Remove worktree
    *
@@ -2025,7 +2025,7 @@ export class Session extends HeyApiClient {
     })
   }
 
-  worktree = new Worktree({ client: this.client })
+  worktree = new SessionWorktree({ client: this.client })
 }
 
 export class Message extends HeyApiClient {
