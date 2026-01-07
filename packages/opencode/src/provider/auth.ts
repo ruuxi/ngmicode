@@ -121,7 +121,7 @@ export namespace ProviderAuth {
     // Prefer IPv6 listener to bridge IPv6 clients to IPv4-only upstreams.
     const ipv6 = await startProxy("::1", "127.0.0.1", true)
     if (!ipv6) {
-      await startProxy("127.0.0.1", "::1", false)
+      await startProxy("127.0.0.1", "127.0.0.1", false)
     }
 
     if (proxies.length === 0) {
