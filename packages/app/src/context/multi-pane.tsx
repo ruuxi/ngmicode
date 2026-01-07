@@ -190,15 +190,16 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         }
 
         const index = store.panes.findIndex((p) => p.id === id)
+        const cloneIndex = index + 1
         const newPanes = [...store.panes]
-        newPanes.splice(index + 1, 0, clonedPane)
+        newPanes.splice(cloneIndex, 0, clonedPane)
 
         batch(() => {
           setStore("panes", newPanes)
           setStore("focusedPaneId", newId)
         })
 
-        const newPage = Math.floor(index / MAX_PANES_PER_PAGE)
+        const newPage = Math.floor(cloneIndex / MAX_PANES_PER_PAGE)
         if (newPage !== store.currentPage) {
           setStore("currentPage", newPage)
         }
