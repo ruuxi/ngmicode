@@ -148,7 +148,7 @@ function createGlobalSync() {
   async function loadSessions(directory: string) {
     const [store, setStore] = child(directory)
     globalSDK.client.session
-      .list({ query: { directory } })
+      .list({ directory })
       .then((x) => {
         const root = normalizeDirectory(directory)
         const fallback = normalizeDirectory(globalStore.path.directory)
