@@ -1823,7 +1823,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Icon name="photo" class="size-4.5" />
                   </Button>
                 </Tooltip>
-                <Show when={platform.platform === "tauri"}>
+                <Show when={platform.platform === "desktop"}>
                   <VoiceButton
                     onTranscription={(text) => {
                       // Insert transcribed text into the prompt

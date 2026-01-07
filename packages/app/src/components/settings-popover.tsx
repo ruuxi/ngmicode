@@ -32,7 +32,7 @@ export const SettingsPopover: Component = () => {
   const sessionID = () => params.id
   const isGitProject = createMemo(() => sync.data.vcs !== undefined)
   const hasPermissions = createMemo(() => permission.permissionsEnabled() && sessionID())
-  const isTauri = () => platform.platform === "tauri"
+  const isDesktop = () => platform.platform === "desktop"
 
   return (
     <Popover
@@ -130,8 +130,8 @@ export const SettingsPopover: Component = () => {
           </div>
         </Show>
 
-        {/* Voice Input Section - only in Tauri */}
-        <Show when={isTauri()}>
+        {/* Voice Input Section - only on desktop */}
+        <Show when={isDesktop()}>
           <div class="border-t border-border-base" />
           <div class="flex flex-col gap-2">
             <div class="text-12-medium text-text-strong">Voice Input</div>

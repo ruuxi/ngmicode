@@ -23,7 +23,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
   init: () => {
     const platform = usePlatform()
     const command = useCommand()
-    const isTauri = platform.platform === "tauri"
+    const isDesktop = platform.platform === "desktop"
     const invoke = platform.invoke
     const listen = platform.listen
 
@@ -50,7 +50,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
 
     // Initialize on mount for Tauri
     onMount(async () => {
-      if (!isTauri || !invoke) return
+      if (!isDesktop || !invoke) return
 
       // Get initial status
       try {
@@ -88,7 +88,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
     })
 
     const downloadModel = async () => {
-      if (!isTauri || !invoke) return
+      if (!isDesktop || !invoke) return
 
       setModelStatus("downloading")
       setDownloadProgress(0)
@@ -105,7 +105,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
     }
 
     const startRecording = async () => {
-      if (!isTauri || !invoke || !isAudioCaptureSupported()) {
+      if (!isDesktop || !invoke || !isAudioCaptureSupported()) {
         setError("Audio capture not supported")
         return
       }
@@ -179,7 +179,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
     }
 
     // Register voice command with keybind system
-    if (isTauri) {
+    if (isDesktop) {
       command.register(() => [
         {
           id: "voice.toggle",
@@ -253,7 +253,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
         downloadProgress,
         lastTranscription,
         error,
-        isSupported: () => isTauri && isAudioCaptureSupported(),
+        isSupported: () => isDesktop && isAudioCaptureSupported(),
       },
 
       // Actions
