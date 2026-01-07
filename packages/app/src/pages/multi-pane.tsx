@@ -104,10 +104,7 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
   }
 
   return (
-    <div
-      class="relative size-full flex flex-col overflow-hidden transition-colors duration-150"
-      onMouseDown={handleMouseDown}
-    >
+    <div class="relative size-full flex flex-col overflow-hidden transition-colors duration-150" onMouseDown={handleMouseDown}>
       <div
         class="pointer-events-none absolute inset-0 z-30 border"
         classList={{

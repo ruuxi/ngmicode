@@ -331,7 +331,7 @@ export function SessionPaneHeader(props: SessionPaneHeaderProps) {
           <Tooltip value="New tab">
             <IconButton icon="plus" variant="ghost" onClick={handleAddPane} />
           </Tooltip>
-          <Show when={multiPane && multiPane.panes().length > 1}>
+          <Show when={multiPane && (multiPane.panes().length > 1 || !!props.sessionId)}>
             <Tooltip value="Close pane">
               <IconButton icon="close" variant="ghost" onClick={props.onClose} />
             </Tooltip>

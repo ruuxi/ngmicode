@@ -2,8 +2,6 @@ import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Logo } from "@opencode-ai/ui/logo"
 import { Icon } from "@opencode-ai/ui/icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -29,6 +27,7 @@ export function HomeContent(props: HomeContentProps) {
   const dialog = useDialog()
   const server = useServer()
   const homedir = createMemo(() => sync.data.path.home)
+  const [internalSelected, setInternalSelected] = createSignal<string | undefined>(undefined)
 
   // For page variant, auto-select most recent project
   const mostRecentProject = createMemo(() => {
@@ -40,7 +39,6 @@ export function HomeContent(props: HomeContentProps) {
   const defaultProject = createMemo(() => sync.data.path.directory)
 
   // Track selected project (auto-selects most recent on page variant)
-  const [internalSelected, setInternalSelected] = createSignal<string | undefined>(undefined)
   const selectedProject = createMemo(() => {
     if (props.selectedProject !== undefined) return props.selectedProject
     const internal = internalSelected()

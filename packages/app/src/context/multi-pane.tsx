@@ -97,6 +97,17 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         const index = store.panes.findIndex((p) => p.id === id)
         if (index === -1) return
 
+        if (store.panes.length === 1) {
+          batch(() => {
+            setStore("panes", index, "sessionId", undefined)
+            setStore("focusedPaneId", id)
+            setStore("maximizedPaneId", undefined)
+            setStore("currentPage", 0)
+          })
+          triggerShiftingGradient()
+          return
+        }
+
         const remaining = store.panes.filter((p) => p.id !== id)
         const isMaximized = store.maximizedPaneId === id
 

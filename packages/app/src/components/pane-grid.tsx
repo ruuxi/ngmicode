@@ -40,9 +40,7 @@ export function PaneGrid(props: PaneGridProps) {
           multiPane.addPane(focusedPane?.directory)
           break
         case "close":
-          if (focusedId && multiPane.panes().length > 1) {
-            multiPane.removePane(focusedId)
-          }
+          if (focusedId) multiPane.removePane(focusedId)
           break
         case "clone":
           if (focusedId) {
@@ -76,6 +74,7 @@ export function PaneGrid(props: PaneGridProps) {
 
   // Watch for pane changes and animate
   createEffect(() => {
+    maximizedPaneId()
     const currentIds = props.panes.map((p) => p.id)
     const prevIds = untrack(() => paneIds())
     const currentPage = multiPane.currentPage()
@@ -353,11 +352,6 @@ export function PaneGrid(props: PaneGridProps) {
     )
   })
 
-  const maximizedPane = createMemo(() => {
-    const id = maximizedPaneId()
-    return id ? props.panes.find((p) => p.id === id) : undefined
-  })
-
   function paneStyle(index: number) {
     const cols = layout().columns
     const rows = layout().rows
@@ -378,6 +372,20 @@ export function PaneGrid(props: PaneGridProps) {
     }
   }
 
+  function paneWrapperStyle(id: string, index: number) {
+    const base = paneStyle(index)
+    const max = maximizedPaneId()
+    if (!max) return base
+    if (id !== max) return base
+    const current = base ? { ...base } : {}
+    return {
+      ...current,
+      "grid-column": "1 / -1",
+      "grid-row": "1 / -1",
+      "z-index": "20",
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -387,40 +395,46 @@ export function PaneGrid(props: PaneGridProps) {
       onMouseUp={radialDial.handlers.onMouseUp}
       onContextMenu={radialDial.handlers.onContextMenu}
     >
-      <Show
-        when={!maximizedPaneId()}
-        fallback={
-          <Show when={maximizedPane()}>
-            {(pane) => (
-              <div class="size-full">
-                {props.renderPane(pane())}
-              </div>
-            )}
-          </Show>
-        }
+      {/* Main grid */}
+      <div
+        class="size-full grid"
+        style={{
+          "grid-template-columns": actualGridCols(),
+          "grid-template-rows": actualGridRows(),
+          gap: `${GRID_GAP}px`,
+        }}
       >
-        {/* Main grid */}
-        <div
-          class="size-full grid"
-          style={{
-            "grid-template-columns": actualGridCols(),
-            "grid-template-rows": actualGridRows(),
-            gap: `${GRID_GAP}px`,
-          }}
-        >
-          <For each={props.panes}>
-            {(pane, index) => (
+        <For each={props.panes}>
+          {(pane, index) => {
+            const hidden = createMemo(() => {
+              const max = maximizedPaneId()
+              if (!max) return false
+              return pane.id !== max
+            })
+
+            return (
               <div
                 ref={(el) => paneRefs.set(pane.id, el)}
                 class="relative min-w-0 min-h-0 overflow-hidden"
-                style={paneStyle(index())}
+                classList={{ "pointer-events-none": hidden() }}
+                style={paneWrapperStyle(pane.id, index())}
               >
-                {props.renderPane(pane)}
+                <div
+                  class="size-full transition-[opacity,transform] duration-200 ease-out"
+                  style={{
+                    opacity: hidden() ? 0 : 1,
+                    transform: hidden() ? "scale(0.98)" : "scale(1)",
+                  }}
+                >
+                  {props.renderPane(pane)}
+                </div>
               </div>
-            )}
-          </For>
-        </div>
+            )
+          }}
+        </For>
+      </div>
 
+      <Show when={!maximizedPaneId()}>
         {/* Corner resize handles */}
         <For each={cornerPositions()}>
           {(corner) => (
