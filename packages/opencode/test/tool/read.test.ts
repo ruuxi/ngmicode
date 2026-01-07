@@ -148,7 +148,7 @@ describe("tool.read env file blocking", () => {
               for (const pattern of req.patterns) {
                 const rule = PermissionNext.evaluate(req.permission, pattern, agent.permission)
                 if (rule.action === "deny") {
-                  throw new PermissionNext.DeniedError(agent.permission)
+                  throw new PermissionNext.AutoRejectedError(agent.permission)
                 }
               }
             },
@@ -156,7 +156,7 @@ describe("tool.read env file blocking", () => {
           const read = await ReadTool.init()
           const promise = read.execute({ filePath: path.join(tmp.path, filename) }, ctxWithPermissions)
           if (blocked) {
-            await expect(promise).rejects.toThrow(PermissionNext.DeniedError)
+            await expect(promise).rejects.toThrow(PermissionNext.AutoRejectedError)
           } else {
             expect((await promise).output).toContain("content")
           }

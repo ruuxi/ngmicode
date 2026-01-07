@@ -890,7 +890,11 @@ export namespace SessionPrompt {
           // Handle hook decisions
           for (const hookResult of preToolResults) {
             if (hookResult.decision === "deny") {
-              throw new PermissionNext.RejectedError(hookResult.reason ?? "Hook denied tool execution")
+              const error = new PermissionNext.RejectedError()
+              if (hookResult.reason) {
+                error.message = hookResult.reason
+              }
+              throw error
             }
             if (hookResult.updatedInput) {
               Object.assign(args, hookResult.updatedInput)
@@ -1004,7 +1008,11 @@ export namespace SessionPrompt {
         // Handle hook decisions
         for (const hookResult of preToolResults) {
           if (hookResult.decision === "deny") {
-            throw new PermissionNext.RejectedError(hookResult.reason ?? "Hook denied tool execution")
+            const error = new PermissionNext.RejectedError()
+            if (hookResult.reason) {
+              error.message = hookResult.reason
+            }
+            throw error
           }
           if (hookResult.updatedInput) {
             Object.assign(args, hookResult.updatedInput)
