@@ -23,10 +23,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       set: setStore,
       get status() {
-        return store.status
+        return store().status
       },
       get ready() {
-        return store.status !== "loading"
+        return store().status !== "loading"
       },
       get project() {
         const current = store()
