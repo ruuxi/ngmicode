@@ -3073,6 +3073,38 @@
                   },
                   "variant": {
                     "type": "string"
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "type": "string",
+                              "const": "file"
+                            },
+                            "mime": {
+                              "type": "string"
+                            },
+                            "filename": {
+                              "type": "string"
+                            },
+                            "url": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "$ref": "#/components/schemas/FilePartSource"
+                            }
+                          },
+                          "required": ["type", "mime", "url"]
+                        }
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -5510,6 +5542,44 @@
             }
           }
         }
+      }
+    },
+    "/mcp/resources": {
+      "get": {
+        "operationId": "mcp.resources",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get MCP resources",
+        "description": "Get all available MCP resources from connected servers.",
+        "responses": {
+          "200": {
+            "description": "MCP resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.resources({\n  ...\n})"
+          }
+        ]
       }
     },
     "/lsp": {
@@ -10945,8 +11015,7 @@
           "mode",
           "permission",
           "options"
-        ]
-      },
+        ]      },
       "MCPStatusConnected": {
         "type": "object",
         "properties": {

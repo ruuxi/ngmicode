@@ -1,11 +1,13 @@
 import { createStore, produce } from "solid-js/store"
-import { batch, createMemo, onMount } from "solid-js"
+import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
 import { useServer } from "./server"
 import { Project } from "@opencode-ai/sdk/v2"
 import { persisted } from "@/utils/persist"
+import { same } from "@/utils/same"
+import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -28,6 +30,11 @@ type SessionTabs = {
   all: string[]
 }
 
+type SessionView = {
+  scroll: Record<string, SessionScroll>
+  reviewOpen?: string[]
+}
+
 export type LocalProject = Partial<Project> & { worktree: string; expanded: boolean }
 
 export type ReviewDiffStyle = "unified" | "split"
@@ -39,7 +46,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const [store, setStore, _, ready] = persisted(
-      "layout.v4",
+      "layout.v6",
       createStore({
         sidebar: {
           opened: false,
@@ -56,13 +63,108 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         session: {
           width: 600,
         },
+        mobileSidebar: {
+          opened: false,
+        },
         sessionTabs: {} as Record<string, SessionTabs>,
         worktree: {
           enabled: false,
           cleanup: "ask" as "ask" | "always" | "never",
         },
+        sessionView: {} as Record<string, SessionView>,
       }),
     )
+
+    const MAX_SESSION_KEYS = 50
+    const meta = { active: undefined as string | undefined, pruned: false }
+    const used = new Map<string, number>()
+
+    function prune(keep?: string) {
+      if (!keep) return
+
+      const keys = new Set<string>()
+      for (const key of Object.keys(store.sessionView)) keys.add(key)
+      for (const key of Object.keys(store.sessionTabs)) keys.add(key)
+      if (keys.size <= MAX_SESSION_KEYS) return
+
+      const score = (key: string) => {
+        if (key === keep) return Number.MAX_SAFE_INTEGER
+        return used.get(key) ?? 0
+      }
+
+      const ordered = Array.from(keys).sort((a, b) => score(b) - score(a))
+      const drop = ordered.slice(MAX_SESSION_KEYS)
+      if (drop.length === 0) return
+
+      setStore(
+        produce((draft) => {
+          for (const key of drop) {
+            delete draft.sessionView[key]
+            delete draft.sessionTabs[key]
+          }
+        }),
+      )
+
+      scroll.drop(drop)
+
+      for (const key of drop) {
+        used.delete(key)
+      }
+    }
+
+    function touch(sessionKey: string) {
+      meta.active = sessionKey
+      used.set(sessionKey, Date.now())
+
+      if (!ready()) return
+      if (meta.pruned) return
+
+      meta.pruned = true
+      prune(sessionKey)
+    }
+
+    const scroll = createScrollPersistence({
+      debounceMs: 250,
+      getSnapshot: (sessionKey) => store.sessionView[sessionKey]?.scroll,
+      onFlush: (sessionKey, next) => {
+        const current = store.sessionView[sessionKey]
+        const keep = meta.active ?? sessionKey
+        if (!current) {
+          setStore("sessionView", sessionKey, { scroll: next })
+          prune(keep)
+          return
+        }
+
+        setStore("sessionView", sessionKey, "scroll", (prev) => ({ ...(prev ?? {}), ...next }))
+        prune(keep)
+      },
+    })
+
+    createEffect(() => {
+      if (!ready()) return
+      if (meta.pruned) return
+      const active = meta.active
+      if (!active) return
+      meta.pruned = true
+      prune(active)
+    })
+
+    onMount(() => {
+      const flush = () => batch(() => scroll.flushAll())
+      const handleVisibility = () => {
+        if (document.visibilityState !== "hidden") return
+        flush()
+      }
+
+      window.addEventListener("pagehide", flush)
+      document.addEventListener("visibilitychange", handleVisibility)
+
+      onCleanup(() => {
+        window.removeEventListener("pagehide", flush)
+        document.removeEventListener("visibilitychange", handleVisibility)
+        scroll.dispose()
+      })
+    })
 
     const usedColors = new Set<AvatarColorKey>()
 
@@ -73,11 +175,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function enrich(project: { worktree: string; expanded: boolean }) {
-      const metadata = globalSync.data.project.find((x) => x.worktree === project.worktree)
+      const [childStore] = globalSync.child(project.worktree)
+      const projectID = childStore.project
+      const metadata = projectID
+        ? globalSync.data.project.find((x) => x.id === projectID)
+        : globalSync.data.project.find((x) => x.worktree === project.worktree)
       return [
         {
-          ...project,
           ...(metadata ?? {}),
+          ...project,
           icon: { url: metadata?.icon?.url, color: metadata?.icon?.color },
         },
       ]
@@ -93,6 +199,41 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
       return project
     }
+
+    const roots = createMemo(() => {
+      const map = new Map<string, string>()
+      for (const project of globalSync.data.project) {
+        const sandboxes = project.sandboxes ?? []
+        for (const sandbox of sandboxes) {
+          map.set(sandbox, project.worktree)
+        }
+      }
+      return map
+    })
+
+    createEffect(() => {
+      const map = roots()
+      if (map.size === 0) return
+
+      const projects = server.projects.list()
+      const seen = new Set(projects.map((project) => project.worktree))
+
+      batch(() => {
+        for (const project of projects) {
+          const root = map.get(project.worktree)
+          if (!root) continue
+
+          server.projects.close(project.worktree)
+
+          if (!seen.has(root)) {
+            server.projects.open(root)
+            seen.add(root)
+          }
+
+          if (project.expanded) server.projects.expand(root)
+        }
+      })
+    })
 
     const enriched = createMemo(() => server.projects.list().flatMap(enrich))
     const list = createMemo(() => enriched().flatMap(colorize))
@@ -110,11 +251,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       projects: {
         list,
         open(directory: string) {
-          if (server.projects.list().find((x) => x.worktree === directory)) {
-            return
-          }
-          globalSync.project.loadSessions(directory)
-          server.projects.open(directory)
+          const root = roots().get(directory) ?? directory
+          if (server.projects.list().find((x) => x.worktree === root)) return
+          globalSync.project.loadSessions(root)
+          server.projects.open(root)
         },
         close(directory: string) {
           server.projects.close(directory)
@@ -186,11 +326,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         resize(width: number) {
           if (!store.session) {
             setStore("session", { width })
-          } else {
-            setStore("session", "width", width)
+            return
           }
+          setStore("session", "width", width)
         },
       },
+
       worktree: {
         enabled: createMemo(() => store.worktree?.enabled ?? false),
         cleanup: createMemo(() => store.worktree?.cleanup ?? "ask"),
@@ -216,7 +357,46 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("worktree", "cleanup", cleanup)
         },
       },
+      mobileSidebar: {
+        opened: createMemo(() => store.mobileSidebar?.opened ?? false),
+        show() {
+          setStore("mobileSidebar", "opened", true)
+        },
+        hide() {
+          setStore("mobileSidebar", "opened", false)
+        },
+        toggle() {
+          setStore("mobileSidebar", "opened", (x) => !x)
+        },
+      },
+      view(sessionKey: string) {
+        touch(sessionKey)
+        scroll.seed(sessionKey)
+        const s = createMemo(() => store.sessionView[sessionKey] ?? { scroll: {} })
+        return {
+          scroll(tab: string) {
+            return scroll.scroll(sessionKey, tab)
+          },
+          setScroll(tab: string, pos: SessionScroll) {
+            scroll.setScroll(sessionKey, tab, pos)
+          },
+          review: {
+            open: createMemo(() => s().reviewOpen),
+            setOpen(open: string[]) {
+              const current = store.sessionView[sessionKey]
+              if (!current) {
+                setStore("sessionView", sessionKey, { scroll: {}, reviewOpen: open })
+                return
+              }
+
+              if (same(current.reviewOpen, open)) return
+              setStore("sessionView", sessionKey, "reviewOpen", open)
+            },
+          },
+        }
+      },
       tabs(sessionKey: string) {
+        touch(sessionKey)
         const tabs = createMemo(() => store.sessionTabs[sessionKey] ?? { all: [] })
         return {
           tabs,
@@ -285,11 +465,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               if (current.active !== tab) return
 
               const index = current.all.findIndex((f) => f === tab)
-              if (index <= 0) {
-                setStore("sessionTabs", sessionKey, "active", undefined)
-                return
-              }
-              setStore("sessionTabs", sessionKey, "active", current.all[index - 1])
+              const next = all[index - 1] ?? all[0]
+              setStore("sessionTabs", sessionKey, "active", next)
             })
           },
           move(tab: string, to: number) {

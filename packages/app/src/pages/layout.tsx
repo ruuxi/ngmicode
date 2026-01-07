@@ -63,16 +63,8 @@ export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
     lastSession: {} as { [directory: string]: string },
     activeDraggable: undefined as string | undefined,
-    mobileSidebarOpen: false,
     mobileProjectsExpanded: {} as Record<string, boolean>,
   })
-
-  const mobileSidebar = {
-    open: () => store.mobileSidebarOpen,
-    show: () => setStore("mobileSidebarOpen", true),
-    hide: () => setStore("mobileSidebarOpen", false),
-    toggle: () => setStore("mobileSidebarOpen", (x) => !x),
-  }
 
   const mobileProjects = {
     expanded: (directory: string) => store.mobileProjectsExpanded[directory] ?? true,
@@ -491,13 +483,13 @@ export default function Layout(props: ParentProps) {
     if (!directory) return
     const lastSession = store.lastSession[directory]
     navigate(`/${base64Encode(directory)}${lastSession ? `/session/${lastSession}` : ""}`)
-    mobileSidebar.hide()
+    layout.mobileSidebar.hide()
   }
 
   function navigateToSession(session: Session | undefined) {
     if (!session) return
     navigate(`/${params.dir}/session/${session?.id}`)
-    mobileSidebar.hide()
+    layout.mobileSidebar.hide()
   }
 
   function openProject(directory: string, navigate = true) {
@@ -684,13 +676,13 @@ export default function Layout(props: ParentProps) {
     const updated = createMemo(() => DateTime.fromMillis(props.session.time.updated))
     const notifications = createMemo(() => notification.session.unseen(props.session.id))
     const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
+    const [sessionStore] = globalSync.child(props.session.directory)
     const hasPermissions = createMemo(() => {
-      const store = globalSync.child(props.project.worktree)[0]
-      const permissions = store.permission?.[props.session.id] ?? []
+      const permissions = sessionStore.permission?.[props.session.id] ?? []
       if (permissions.length > 0) return true
-      const childSessions = store.session.filter((s) => s.parentID === props.session.id)
+      const childSessions = sessionStore.session.filter((s) => s.parentID === props.session.id)
       for (const child of childSessions) {
-        const childPermissions = store.permission?.[child.id] ?? []
+        const childPermissions = sessionStore.permission?.[child.id] ?? []
         if (childPermissions.length > 0) return true
       }
       return false
@@ -698,7 +690,7 @@ export default function Layout(props: ParentProps) {
     const isWorking = createMemo(() => {
       if (props.session.id === params.id) return false
       if (hasPermissions()) return false
-      const status = globalSync.child(props.project.worktree)[0].session_status[props.session.id]
+      const status = sessionStore.session_status[props.session.id]
       return status?.type === "busy" || status?.type === "retry"
     })
 
@@ -802,6 +794,10 @@ export default function Layout(props: ParentProps) {
     const isExpanded = createMemo(() =>
       props.mobile ? mobileProjects.expanded(props.project.worktree) : props.project.expanded,
     )
+    const isActive = createMemo(() => {
+      const current = params.dir ? base64Decode(params.dir) : ""
+      return props.project.worktree === current || props.project.sandboxes?.includes(current)
+    })
     const handleOpenChange = (open: boolean) => {
       if (props.mobile) {
         if (open) mobileProjects.expand(props.project.worktree)
@@ -820,7 +816,10 @@ export default function Layout(props: ParentProps) {
               <Button
                 as={"div"}
                 variant="ghost"
-                class="group/session flex items-center justify-between gap-3 w-full px-1.5 self-stretch h-auto border-none rounded-lg"
+                classList={{
+                  "group/session flex items-center justify-between gap-3 w-full px-1.5 self-stretch h-auto border-none rounded-lg": true,
+                  "bg-surface-raised-base-hover": isActive() && !isExpanded(),
+                }}
               >
                 <Collapsible.Trigger class="group/trigger flex items-center gap-3 p-0 text-left min-w-0 grow border-none">
                   <ProjectAvatar
@@ -1087,13 +1086,20 @@ export default function Layout(props: ParentProps) {
       <div class="flex-1 min-h-0 flex">
         <div
           classList={{
-            "hidden xl:flex": true,
-            "relative @container w-12 pb-5 shrink-0 bg-background-base": true,
-            "flex-col gap-5.5 items-start self-stretch justify-between": true,
-            "border-r border-border-weak-base contain-strict": true,
+            "hidden xl:block": true,
+            "relative shrink-0": true,
           }}
-          style={{ width: layout.sidebar.opened() ? `${layout.sidebar.width()}px` : undefined }}
+          style={{ width: layout.sidebar.opened() ? `${layout.sidebar.width()}px` : "48px" }}
         >
+          <div
+            classList={{
+              "@container w-full h-full pb-5 bg-background-base": true,
+              "flex flex-col gap-5.5 items-start self-stretch justify-between": true,
+              "border-r border-border-weak-base contain-strict": true,
+            }}
+          >
+            <SidebarContent />
+          </div>
           <Show when={layout.sidebar.opened()}>
             <ResizeHandle
               direction="horizontal"
@@ -1105,27 +1111,35 @@ export default function Layout(props: ParentProps) {
               onCollapse={layout.sidebar.close}
             />
           </Show>
-          <SidebarContent />
         </div>
         <div class="xl:hidden">
           <div
             classList={{
               "fixed inset-0 bg-black/50 z-40 transition-opacity duration-200": true,
-              "opacity-100 pointer-events-auto": mobileSidebar.open(),
-              "opacity-0 pointer-events-none": !mobileSidebar.open(),
+              "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
+              "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) mobileSidebar.hide()
+              if (e.target === e.currentTarget) layout.mobileSidebar.hide()
             }}
           />
           <div
             classList={{
-              "@container fixed inset-y-0 left-0 z-50 w-72 bg-background-base border-r border-border-weak-base flex flex-col gap-5.5 items-start self-stretch justify-between pt-12 pb-5 transition-transform duration-200 ease-out": true,
-              "translate-x-0": mobileSidebar.open(),
-              "-translate-x-full": !mobileSidebar.open(),
+              "@container fixed inset-y-0 left-0 z-50 w-72 bg-background-base border-r border-border-weak-base flex flex-col gap-5.5 items-start self-stretch justify-between pb-5 transition-transform duration-200 ease-out": true,
+              "translate-x-0": layout.mobileSidebar.opened(),
+              "-translate-x-full": !layout.mobileSidebar.opened(),
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div class="border-b border-border-weak-base w-full h-12 ml-px flex items-center pl-1.75 shrink-0">
+              <A
+                href="/"
+                class="shrink-0 h-8 flex items-center justify-start px-2 w-full"
+                onClick={() => layout.mobileSidebar.hide()}
+              >
+                <Mark class="shrink-0" />
+              </A>
+            </div>
             <SidebarContent mobile />
           </div>
         </div>

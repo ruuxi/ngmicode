@@ -56,6 +56,7 @@ export function SessionPane(props: SessionPaneProps) {
   const layout = useLayout()
   const dialog = useDialog()
   const multiPane = props.mode === "multi" ? useMultiPane() : undefined
+  const hasMultiplePanes = createMemo(() => (props.mode === "multi" && multiPane ? multiPane.panes().length > 1 : false))
 
   // Local state
   const [store, setStore] = createStore({
@@ -346,7 +347,7 @@ export function SessionPane(props: SessionPaneProps) {
       onMouseLeave={props.mode === "multi" ? headerOverlay.handleMouseLeave : undefined}
       onMouseMove={props.mode === "multi" ? headerOverlay.handleMouseMove : undefined}
     >
-      <Show when={props.mode === "multi"}>
+      <Show when={props.mode === "multi" && hasMultiplePanes()}>
         <div
           class="pointer-events-none absolute inset-0 z-30 border"
           classList={{

@@ -51,7 +51,7 @@ export const Terminal = (props: TerminalProps) => {
     const variant = mode === "dark" ? currentTheme.dark : currentTheme.light
     if (!variant?.seeds) return fallback
     const resolved = resolveThemeVariant(variant, mode === "dark")
-    const text = resolved["text-base"] ?? fallback.foreground
+    const text = resolved["text-stronger"] ?? fallback.foreground
     const background = resolved["background-stronger"] ?? fallback.background
     return {
       background,
@@ -146,11 +146,12 @@ export const Terminal = (props: TerminalProps) => {
         term.resize(local.pty.cols, local.pty.rows)
       }
       term.reset()
-      term.write(local.pty.buffer)
-      if (local.pty.scrollY) {
-        term.scrollToLine(local.pty.scrollY)
-      }
-      fitAddon.fit()
+      term.write(local.pty.buffer, () => {
+        if (local.pty.scrollY) {
+          term.scrollToLine(local.pty.scrollY)
+        }
+        fitAddon.fit()
+      })
     }
 
     fitAddon.observeResize()

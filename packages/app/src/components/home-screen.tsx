@@ -6,6 +6,7 @@ import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
+import { FileProvider } from "@/context/file"
 import { DataProvider } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
@@ -32,11 +33,13 @@ function SyncedHomePrompt(props: HomePromptBarProps) {
     <DataProvider data={sync.data} directory={props.directory} onPermissionRespond={() => Promise.resolve()}>
       <LocalProvider>
         <TerminalProvider>
-          <PromptProvider>
-            <div class="w-full max-w-200 mx-auto px-6 pb-8">
-              <PromptInput onSessionCreated={props.onSessionCreated} />
-            </div>
-          </PromptProvider>
+          <FileProvider>
+            <PromptProvider>
+              <div class="w-full max-w-200 mx-auto px-6 pb-8">
+                <PromptInput onSessionCreated={props.onSessionCreated} />
+              </div>
+            </PromptProvider>
+          </FileProvider>
         </TerminalProvider>
       </LocalProvider>
     </DataProvider>

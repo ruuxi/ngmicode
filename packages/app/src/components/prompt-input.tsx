@@ -3,6 +3,7 @@ import { createEffect, on, Component, Show, For, onMount, onCleanup, Switch, Mat
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
+import { useFile, type FileSelection } from "@/context/file"
 import {
   ContentPart,
   DEFAULT_PROMPT,
@@ -99,6 +100,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
   const sync = useSync()
   const local = useLocal()
+  const files = useFile()
   const prompt = usePrompt()
   const layout = useLayout()
   const params = useParams()
@@ -110,6 +112,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
+  let slashPopoverRef!: HTMLDivElement
 
   const scrollCursorIntoView = () => {
     const container = scrollRef
@@ -144,6 +147,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const effectiveSessionId = createMemo(() => props.sessionId ?? params.id)
   const sessionKey = createMemo(() => `${params.dir}${effectiveSessionId() ? "/" + effectiveSessionId() : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const activeFile = createMemo(() => {
+    const tab = tabs().active()
+    if (!tab) return
+    return files.pathFromTab(tab)
+  })
   const info = createMemo(() => (effectiveSessionId() ? sync.session.get(effectiveSessionId()!) : undefined))
   const status = createMemo(
     () =>
@@ -305,6 +313,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleGlobalDragOver = (event: DragEvent) => {
+    if (dialog.active) return
+
     event.preventDefault()
     const hasFiles = event.dataTransfer?.types.includes("Files")
     if (hasFiles) {
@@ -313,6 +323,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleGlobalDragLeave = (event: DragEvent) => {
+    if (dialog.active) return
+
     // relatedTarget is null when leaving the document window
     if (!event.relatedTarget) {
       setStore("dragging", false)
@@ -320,13 +332,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleGlobalDrop = async (event: DragEvent) => {
+    if (dialog.active) return
+
     event.preventDefault()
     setStore("dragging", false)
 
-    const files = event.dataTransfer?.files
-    if (!files) return
+    const dropped = event.dataTransfer?.files
+    if (!dropped) return
 
-    for (const file of Array.from(files)) {
+    for (const file of Array.from(dropped)) {
       if (ACCEPTED_FILE_TYPES.includes(file.type)) {
         await addImageAttachment(file)
       }
@@ -380,8 +394,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   } = useFilteredList<AtOption>({
     items: async (query) => {
       const agents = agentList()
-      const files = await local.file.searchFilesAndDirectories(query)
-      const fileOptions: AtOption[] = files.map((path) => ({ type: "file", path, display: path }))
+      const paths = await files.searchFilesAndDirectories(query)
+      const fileOptions: AtOption[] = paths.map((path) => ({ type: "file", path, display: path }))
       return [...agents, ...fileOptions]
     },
     key: atKey,
@@ -463,6 +477,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     active: slashActive,
     onInput: slashOnInput,
     onKeyDown: slashOnKeyDown,
+    refetch: slashRefetch,
   } = useFilteredList<SlashCommand>({
     items: slashCommands,
     key: (x) => x?.id,
@@ -470,6 +485,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onSelect: handleSlashSelect,
   })
 
+  createEffect(
+    on(
+      () => sync.data.command,
+      () => slashRefetch(),
+      { defer: true },
+    ),
+  )
+
+// Auto-scroll active command into view when navigating with keyboard
+  createEffect(() => {
+    const activeId = slashActive()
+    if (!activeId || !slashPopoverRef) return
+
+    requestAnimationFrame(() => {
+      const element = slashPopoverRef.querySelector(`[data-slash-id="${activeId}"]`)
+      element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    })
+  })
+          
   createEffect(
     on(
       () => prompt.current(),
@@ -1005,6 +1039,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
         if (ctrl) {
           if (event.code === "KeyA") {
+            if (navigator.platform.includes("Win")) return
             const pos = text.lastIndexOf("\n", cursorPosition - 1) + 1
             setCursorPosition(editorRef, pos)
             event.preventDefault()
@@ -1265,6 +1300,41 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         },
       }))
 
+      const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
+
+      const contextFileParts: Array<{
+        id: string
+        type: "file"
+        mime: string
+        url: string
+        filename?: string
+      }> = []
+
+      const addContextFile = (path: string, selection?: FileSelection) => {
+        const absolute = toAbsolutePath(path)
+        const query = selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
+        const url = `file://${absolute}${query}`
+        if (usedUrls.has(url)) return
+        usedUrls.add(url)
+        contextFileParts.push({
+          id: Identifier.ascending("part"),
+          type: "file",
+          mime: "text/plain",
+          url,
+          filename: getFilename(path),
+        })
+      }
+
+      const activePath = activeFile()
+      if (activePath && prompt.context.activeTab()) {
+        addContextFile(activePath)
+      }
+
+      for (const item of prompt.context.items()) {
+        if (item.type !== "file") continue
+        addContextFile(item.path, item.selection)
+      }
+
       const imageAttachmentParts = store.imageAttachments.map((attachment) => ({
         id: Identifier.ascending("part"),
         type: "file" as const,
@@ -1348,7 +1418,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         type: "text" as const,
         text,
       }
-      const requestParts = [textPart, ...fileAttachmentParts, ...agentAttachmentParts, ...imageAttachmentParts]
+      const requestParts = [
+        textPart,
+        ...fileAttachmentParts,
+        ...contextFileParts,
+        ...agentAttachmentParts,
+        ...imageAttachmentParts,
+      ]
       const optimisticParts = requestParts.map((part) => ({
         ...part,
         sessionID: existing.id,
@@ -1395,6 +1471,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       </div>
       <Show when={store.popover}>
         <div
+          ref={(el) => {
+            if (store.popover === "slash") slashPopoverRef = el
+          }}
           class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10
                  overflow-auto no-scrollbar flex flex-col p-2 rounded-md
                  border border-border-base bg-surface-raised-stronger-non-alpha shadow-md"
@@ -1453,6 +1532,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <For each={slashFlat()}>
                   {(cmd) => (
                     <button
+                      data-slash-id={cmd.id}
                       classList={{
                         "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
                         "bg-surface-raised-base-hover": slashActive() === cmd.id,
@@ -1499,6 +1579,66 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <Icon name="photo" class="size-8" />
               <span class="text-14-regular">Drop images or PDFs here</span>
             </div>
+          </div>
+        </Show>
+        <Show when={false && (prompt.context.items().length > 0 || !!activeFile())}>
+          <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
+            <Show when={prompt.context.activeTab() ? activeFile() : undefined}>
+              {(path) => (
+                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
+                  <FileIcon node={{ path: path(), type: "file" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-12-regular min-w-0">
+                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(path())}</span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(path())}</span>
+                    <span class="text-text-weak whitespace-nowrap ml-1">active</span>
+                  </div>
+                  <IconButton
+                    type="button"
+                    icon="close"
+                    variant="ghost"
+                    class="h-6 w-6"
+                    onClick={() => prompt.context.removeActive()}
+                  />
+                </div>
+              )}
+            </Show>
+            <Show when={!prompt.context.activeTab() && !!activeFile()}>
+              <button
+                type="button"
+                class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base text-12-regular text-text-weak hover:bg-surface-raised-base-hover"
+                onClick={() => prompt.context.addActive()}
+              >
+                <Icon name="plus-small" size="small" />
+                <span>Include active file</span>
+              </button>
+            </Show>
+            <For each={prompt.context.items()}>
+              {(item) => (
+                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
+                  <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-12-regular min-w-0">
+                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(item.path)}</span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(item.path)}</span>
+                    <Show when={item.selection}>
+                      {(sel) => (
+                        <span class="text-text-weak whitespace-nowrap ml-1">
+                          {sel().startLine === sel().endLine
+                            ? `:${sel().startLine}`
+                            : `:${sel().startLine}-${sel().endLine}`}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                  <IconButton
+                    type="button"
+                    icon="close"
+                    variant="ghost"
+                    class="h-6 w-6"
+                    onClick={() => prompt.context.remove(item.key)}
+                  />
+                </div>
+              )}
+            </For>
           </div>
         </Show>
         <Show when={store.imageAttachments.length > 0}>

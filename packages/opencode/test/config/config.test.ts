@@ -488,6 +488,87 @@ Helper subagent prompt`,
   })
 })
 
+test("merges instructions arrays from global and local configs", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
+
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          instructions: ["global-instructions.md", "shared-rules.md"],
+        }),
+      )
+
+      await Bun.write(
+        path.join(opencodeDir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          instructions: ["local-instructions.md"],
+        }),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: path.join(tmp.path, "project"),
+    fn: async () => {
+      const config = await Config.get()
+      const instructions = config.instructions ?? []
+
+      expect(instructions).toContain("global-instructions.md")
+      expect(instructions).toContain("shared-rules.md")
+      expect(instructions).toContain("local-instructions.md")
+      expect(instructions.length).toBe(3)
+    },
+  })
+})
+
+test("deduplicates duplicate instructions from global and local configs", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
+
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          instructions: ["duplicate.md", "global-only.md"],
+        }),
+      )
+
+      await Bun.write(
+        path.join(opencodeDir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          instructions: ["duplicate.md", "local-only.md"],
+        }),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: path.join(tmp.path, "project"),
+    fn: async () => {
+      const config = await Config.get()
+      const instructions = config.instructions ?? []
+
+      expect(instructions).toContain("global-only.md")
+      expect(instructions).toContain("local-only.md")
+      expect(instructions).toContain("duplicate.md")
+
+      const duplicates = instructions.filter((i) => i === "duplicate.md")
+      expect(duplicates.length).toBe(1)
+      expect(instructions.length).toBe(3)
+    },
+  })
+})
+
 test("deduplicates duplicate plugins from global and local configs", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -784,6 +865,51 @@ test("merges legacy tools with existing permission config", async () => {
         glob: "allow",
         bash: "allow",
       })
+    },
+  })
+})
+
+test("permission config preserves key order", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          permission: {
+            "*": "deny",
+            edit: "ask",
+            write: "ask",
+            external_directory: "ask",
+            read: "allow",
+            todowrite: "allow",
+            todoread: "allow",
+            "thoughts_*": "allow",
+            "reasoning_model_*": "allow",
+            "tools_*": "allow",
+            "pr_comments_*": "allow",
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(Object.keys(config.permission!)).toEqual([
+        "*",
+        "edit",
+        "write",
+        "external_directory",
+        "read",
+        "todowrite",
+        "todoread",
+        "thoughts_*",
+        "reasoning_model_*",
+        "tools_*",
+        "pr_comments_*",
+      ])
     },
   })
 })

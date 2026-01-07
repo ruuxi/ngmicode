@@ -936,12 +936,10 @@ ToolRegistry.register({
               before={{
                 name: props.metadata?.filediff?.file || filePath,
                 contents: props.metadata?.filediff?.before || oldString,
-                cacheKey: checksum(props.metadata?.filediff?.before || oldString),
               }}
               after={{
                 name: props.metadata?.filediff?.file || filePath,
                 contents: props.metadata?.filediff?.after || newString,
-                cacheKey: checksum(props.metadata?.filediff?.after || newString),
               }}
             />
           </div>
@@ -1043,3 +1041,5 @@ ToolRegistry.register({
     return <PlanReview {...props} />
   },
 })
+
+

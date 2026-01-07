@@ -28,7 +28,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 let update: Update | null = null
 
 const platform: Platform = {
-  platform: "tauri",
+  platform: "desktop",
   version: pkg.version,
 
   async openDirectoryPickerDialog(opts) {
@@ -207,7 +207,7 @@ render(() => {
   return (
     <PlatformProvider value={platform}>
       {ostype() === "macos" && (
-        <div class="bg-background-base border-b border-border-weak-base h-8" data-tauri-drag-region />
+        <div class="mx-px bg-background-base border-b border-border-weak-base h-8" data-tauri-drag-region />
       )}
       <App />
     </PlatformProvider>
