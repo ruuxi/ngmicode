@@ -371,13 +371,13 @@ export function SessionPane(props: SessionPaneProps) {
       onMouseMove={props.mode === "multi" ? headerOverlay.handleMouseMove : undefined}
     >
       <Show when={props.mode === "multi" && hasMultiplePanes()}>
-        <div
-          class="pointer-events-none absolute inset-0 z-30 border"
-          classList={{
-            "border-border-accent-base": isFocused(),
-            "border-border-weak-base": !isFocused(),
-          }}
-        />
+      <div
+        class="pointer-events-none absolute inset-0 z-30 border"
+        classList={{
+          "border-border-accent-base": isFocused(),
+          "border-border-strong-base": !isFocused(),
+        }}
+      />
       </Show>
 
       {/* Header */}
@@ -486,7 +486,7 @@ export function SessionPane(props: SessionPaneProps) {
           selectedProject={expectedDirectory() || undefined}
           hideLogo={hidePaneLogo()}
           showRelativeTime={showRelativeTime()}
-          showThemePicker={isFocused()}
+          showThemePicker={multiPane ? multiPane.panes().length === 1 : true}
           onProjectSelected={handleProjectSelect}
           onNavigateMulti={() => multiPane?.addPane()}
         />

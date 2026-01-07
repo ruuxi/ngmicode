@@ -109,13 +109,13 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
         class="pointer-events-none absolute inset-0 z-30 border"
         classList={{
           "border-border-accent-base": props.isFocused(),
-          "border-border-weak-base": !props.isFocused(),
+          "border-border-strong-base": !props.isFocused(),
         }}
       />
       <HomeScreen
         hideLogo={hideLogo()}
         showRelativeTime={showRelativeTime()}
-        showThemePicker={props.isFocused()}
+        showThemePicker={multiPane.panes().length === 1}
         onProjectSelected={handleProjectSelected}
         onNavigateMulti={handleNavigateMulti}
       />
