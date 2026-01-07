@@ -17,12 +17,29 @@ export namespace ProviderAuth {
     close(): void
   }
 
+  type ProxyServer = {
+    server: net.Server
+    sockets: Set<net.Socket>
+  }
+
   function isRecord(input: unknown): input is Record<string, unknown> {
     return typeof input === "object" && input !== null
   }
 
   function readString(input: unknown): string | undefined {
     return typeof input === "string" ? input : undefined
+  }
+
+  function errorCode(input: unknown): string | undefined {
+    if (!isRecord(input)) return undefined
+    return readString(input.code)
+  }
+
+  function isExpectedListenError(error: unknown): boolean {
+    const code = errorCode(error)
+    if (code === "EADDRINUSE") return true
+    if (code === "EADDRNOTAVAIL") return true
+    return false
   }
 
   function parseRedirectUrl(authUrl: string): URL | undefined {
@@ -42,13 +59,10 @@ export namespace ProviderAuth {
     return port
   }
 
-  async function startLocalhostProxy(authUrl: string): Promise<ProxyHandle | undefined> {
-    const port = parseRedirectPort(authUrl)
-    if (!port) return undefined
-
+  function createProxy(port: number, upstreamHost: string): ProxyServer {
     const sockets = new Set<net.Socket>()
     const server = net.createServer((client) => {
-      const upstream = net.connect({ host: "127.0.0.1", port })
+      const upstream = net.connect({ host: upstreamHost, port })
       sockets.add(client)
       sockets.add(upstream)
 
@@ -68,28 +82,64 @@ export namespace ProviderAuth {
       upstream.pipe(client)
     })
 
-    const ready = await new Promise<boolean>((resolve) => {
-      server.once("listening", () => resolve(true))
-      server.once("error", (error) => {
+    return { server, sockets }
+  }
+
+  async function listenProxy(
+    server: net.Server,
+    port: number,
+    host: string,
+    ipv6Only: boolean,
+  ): Promise<{ ok: boolean; error?: unknown }> {
+    return new Promise((resolve) => {
+      server.once("listening", () => resolve({ ok: true }))
+      server.once("error", (error) => resolve({ ok: false, error }))
+      server.listen({ host, port, ipv6Only })
+    })
+  }
+
+  async function startLocalhostProxy(authUrl: string): Promise<ProxyHandle | undefined> {
+    const port = parseRedirectPort(authUrl)
+    if (!port) return undefined
+
+    const proxies: ProxyServer[] = []
+    const errors: unknown[] = []
+
+    const startProxy = async (listenHost: string, upstreamHost: string, ipv6Only: boolean) => {
+      const proxy = createProxy(port, upstreamHost)
+      const result = await listenProxy(proxy.server, port, listenHost, ipv6Only)
+      if (result.ok) {
+        proxy.server.unref?.()
+        proxies.push(proxy)
+        return true
+      }
+      proxy.server.close()
+      if (result.error) errors.push(result.error)
+      return false
+    }
+
+    // Prefer IPv6 listener to bridge IPv6 clients to IPv4-only upstreams.
+    const ipv6 = await startProxy("::1", "127.0.0.1", true)
+    if (!ipv6) {
+      await startProxy("127.0.0.1", "::1", false)
+    }
+
+    if (proxies.length === 0) {
+      const error = errors.find((item) => !isExpectedListenError(item))
+      if (error) {
         const message = error instanceof Error ? error.message : String(error)
         log.warn("codex login proxy failed to listen", { error: message })
-        resolve(false)
-      })
-      server.listen({ host: "::1", port, ipv6Only: true })
-    })
-
-    if (!ready) {
-      server.close()
+      }
       return undefined
     }
 
-    server.unref?.()
-
     const close = () => {
-      for (const socket of sockets) {
-        socket.destroy()
+      for (const proxy of proxies) {
+        for (const socket of proxy.sockets) {
+          socket.destroy()
+        }
+        proxy.server.close()
       }
-      server.close()
     }
     const timeout = setTimeout(close, 10 * 60 * 1000)
     const stop = () => {
