@@ -44,6 +44,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
     const [downloadProgress, setDownloadProgress] = createSignal(0)
     const [lastTranscription, setLastTranscription] = createSignal<string | null>(null)
     const [error, setError] = createSignal<string | null>(null)
+    const [audioLevels, setAudioLevels] = createSignal<number[]>([])
 
     // Audio capture instance
     let audioCapture: AudioCapture | null = null
@@ -126,14 +127,20 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
 
         // Start audio capture
         audioCapture = new AudioCapture()
-        await audioCapture.start(async (samples) => {
-          // Send audio chunks to backend
-          try {
-            await invoke("stt_push_audio", { samples: Array.from(samples) })
-          } catch (e) {
-            console.error("Failed to push audio:", e)
-          }
-        })
+        await audioCapture.start(
+          async (samples) => {
+            // Send audio chunks to backend
+            try {
+              await invoke("stt_push_audio", { samples: Array.from(samples) })
+            } catch (e) {
+              console.error("Failed to push audio:", e)
+            }
+          },
+          (levels) => {
+            // Update audio levels for visualization
+            setAudioLevels(levels)
+          },
+        )
 
         setIsRecording(true)
       } catch (e) {
@@ -153,6 +160,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
 
       setIsRecording(false)
       setIsTranscribing(true)
+      setAudioLevels([])
 
       try {
         // Get transcription from backend
@@ -253,6 +261,7 @@ export const { use: useVoice, provider: VoiceProvider } = createSimpleContext({
         downloadProgress,
         lastTranscription,
         error,
+        audioLevels,
         isSupported: () => isDesktop && isAudioCaptureSupported(),
       },
 

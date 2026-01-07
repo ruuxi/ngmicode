@@ -671,9 +671,9 @@ export namespace CodexProcessor {
       SessionStatus.set(input.sessionID, { type: "idle" })
     }
 
-    const run = async () => {
+    const run = async (instructionsOverride?: string) => {
       SessionStatus.set(input.sessionID, { type: "busy" })
-      const instructions = await buildInstructions(input)
+      const instructions = instructionsOverride ?? await buildInstructions(input)
       const threadID = await ensureThread(input, instructions)
       const ctx: ProcessContext = {
         sessionID: input.sessionID,
@@ -705,6 +705,11 @@ export namespace CodexProcessor {
       })
       subscriptions.exit = CodexAppServer.onExit((error) => {
         if (ctx.turnStatus) return
+        if (input.abort.aborted) {
+          ctx.turnStatus = "interrupted"
+          done.resolve()
+          return
+        }
         ctx.turnStatus = "failed"
         ctx.turnError = error.message
         done.resolve()
@@ -778,13 +783,16 @@ export namespace CodexProcessor {
       return result
     }
 
-    const attempt = () => run().finally(cleanup)
+    const attempt = (instructionsOverride?: string) => run(instructionsOverride).finally(cleanup)
     return attempt().catch(async (error) => {
       if (!(error instanceof Error)) throw error
       const message = error.message.toLowerCase()
       if (!message.includes("instructions are not valid")) throw error
+      log.warn("codex instructions rejected, retrying without developer instructions", {
+        sessionID: input.sessionID,
+      })
       await CodexSession.clearThreadID(input.sessionID)
-      return attempt()
+      return attempt("")
     })
   }
 }

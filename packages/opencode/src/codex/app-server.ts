@@ -136,6 +136,12 @@ export namespace CodexAppServer {
     return undefined
   }
 
+  function requiresShell(bin: string): boolean {
+    if (process.platform !== "win32") return false
+    const lower = bin.toLowerCase()
+    return lower.endsWith(".cmd") || lower.endsWith(".bat")
+  }
+
   function encode(message: Record<string, unknown>): string {
     return JSON.stringify(message) + "\n"
   }
@@ -230,6 +236,7 @@ export namespace CodexAppServer {
       cwd: Instance.directory,
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
+      shell: requiresShell(bin),
       env: {
         ...process.env,
         CODEX_HOME: codexHome,

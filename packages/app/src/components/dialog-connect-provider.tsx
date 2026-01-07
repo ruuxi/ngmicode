@@ -97,6 +97,18 @@ export function DialogConnectProvider(props: { provider: string }) {
     listRef?.onKeyDown(e)
   }
 
+  function normalizeOauthCode(input: string) {
+    const trimmed = input.trim()
+    if (!trimmed) return undefined
+    const codeMatch = trimmed.match(/(?:^|[?&#])code=([^&#]+)/i)
+    const stateMatch = trimmed.match(/(?:^|[?&#])state=([^&#]+)/i)
+    const code = codeMatch?.[1]
+    const state = stateMatch?.[1]
+    if (code && state) return `${code}#${state}`
+    if (code) return code
+    return trimmed
+  }
+
   onMount(() => {
     if (methods().length === 1) {
       selectMethod(0)
@@ -290,9 +302,9 @@ export function DialogConnectProvider(props: { provider: string }) {
 
                       const form = e.currentTarget as HTMLFormElement
                       const formData = new FormData(form)
-                      const code = formData.get("code") as string
+                      const code = normalizeOauthCode(String(formData.get("code") ?? ""))
 
-                      if (!code?.trim()) {
+                      if (!code) {
                         setFormStore("error", "Authorization code is required")
                         return
                       }
@@ -316,6 +328,9 @@ export function DialogConnectProvider(props: { provider: string }) {
                           Visit <Link href={store.authorization!.url}>this link</Link> to collect your authorization
                           code to connect your account and use {provider().name} models in OpenCode.
                         </div>
+                        <Show when={props.provider === "codex" && store.authorization?.url}>
+                          <TextField label="Login link" value={store.authorization!.url} readOnly copyable />
+                        </Show>
                         <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
                           <TextField
                             autofocus

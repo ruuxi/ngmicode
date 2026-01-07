@@ -100,6 +100,11 @@ export namespace ModelsDev {
           input: ["text", "image", "pdf"],
           output: ["text"],
         },
+        variants: {
+          low: { reasoningEffort: "low" },
+          medium: { reasoningEffort: "medium" },
+          high: { reasoningEffort: "high" },
+        },
         options: {},
       },
     },

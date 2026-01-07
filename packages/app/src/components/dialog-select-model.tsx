@@ -1,5 +1,5 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, createMemo, createSignal, JSX, Show } from "solid-js"
+import { Component, createMemo, createSignal, For, JSX, Show } from "solid-js"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
@@ -126,6 +126,9 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
   const isClaudeCodeMode = createMemo(() => local.mode.current()?.id === "claude-code")
   const isCodexMode = createMemo(() => local.mode.current()?.id === "codex")
+  const variants = createMemo(() => local.model.variant.list())
+  const currentVariant = createMemo(() => local.model.variant.current())
+  const hasVariants = createMemo(() => variants().length > 0)
 
   if (isOhMyMode()) {
     return (
@@ -154,6 +157,39 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         }
       >
         <ModelList provider="codex" onSelect={() => dialog.close()} />
+        <Show when={hasVariants()}>
+          <div class="px-3 py-3 border-t border-border-base flex flex-col gap-2">
+            <div class="text-12-regular text-text-weak">Reasoning effort</div>
+            <div class="flex flex-col gap-1">
+              <button
+                type="button"
+                class="px-2 py-1 rounded text-12-regular text-left"
+                classList={{
+                  "bg-surface-info-base/20 text-text-info-base": currentVariant() === undefined,
+                  "hover:bg-surface-raised-base-hover text-text-subtle": currentVariant() !== undefined,
+                }}
+                onClick={() => local.model.variant.set(undefined)}
+              >
+                Default
+              </button>
+              <For each={variants()}>
+                {(variant) => (
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded text-12-regular capitalize text-left"
+                    classList={{
+                      "bg-surface-info-base/20 text-text-info-base": currentVariant() === variant,
+                      "hover:bg-surface-raised-base-hover text-text-subtle": currentVariant() !== variant,
+                    }}
+                    onClick={() => local.model.variant.set(variant)}
+                  >
+                    {variant}
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
       </Dialog>
     )
   }

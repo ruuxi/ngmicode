@@ -22,16 +22,11 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Select } from "@opencode-ai/ui/select"
-import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { showToast } from "@opencode-ai/ui/toast"
-import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { SettingsPopover } from "@/components/settings-popover"
-import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
-import { ModeSelector } from "@/components/mode-selector"
-import { useProviders } from "@/hooks/use-providers"
+import { MegaSelector } from "@/components/mega-selector"
 import { useCommand } from "@/context/command"
 import { persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
@@ -40,6 +35,7 @@ import { usePermission } from "@/context/permission"
 import { WorktreeStatusIndicator } from "@/components/session-worktree-indicator"
 import { usePlatform } from "@/context/platform"
 import { VoiceButton } from "@/components/voice-button"
+import { VoiceRecordingWidget } from "@/components/voice-recording-widget"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -105,7 +101,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const layout = useLayout()
   const params = useParams()
   const dialog = useDialog()
-  const providers = useProviders()
   const command = useCommand()
   const permission = usePermission()
   const platform = usePlatform()
@@ -160,7 +155,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
-  const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
   const [submitting, setSubmitting] = createSignal(false)
 
   const [store, setStore] = createStore<{
@@ -1465,6 +1459,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   return (
     <div class="relative size-full _max-h-[320px] flex flex-col gap-2">
+      {/* Voice recording widget - above prompt bar */}
+      <Show when={platform.platform === "desktop"}>
+        <VoiceRecordingWidget />
+      </Show>
       {/* Worktree status indicator - above prompt bar on the right */}
       <div class="flex justify-end">
         <WorktreeStatusIndicator />
@@ -1712,93 +1710,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <ModeSelector />
-                <DropdownMenu placement="top-start">
-                  <DropdownMenu.Trigger>
-                    <TooltipKeybind placement="top" title="Cycle agent (Tab)" keybind={command.keybind("agent.cycle")}>
-                      <Button variant="ghost" class="gap-1.5 capitalize">
-                        <Icon name="brain" size="small" class="text-icon-info-active" />
-                        {local.agent.current()?.name ?? "Build"}
-                        <Icon name="chevron-down" size="small" />
-                      </Button>
-                    </TooltipKeybind>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content class="min-w-48 p-1">
-                      <For each={local.agent.list()}>
-                        {(agent) => (
-                          <DropdownMenu.Item
-                            onSelect={() => local.agent.set(agent.name)}
-                            class="flex flex-col items-start gap-0.5 px-2 py-1.5 rounded cursor-pointer"
-                            classList={{
-                              "bg-surface-base-hover": local.agent.current()?.name === agent.name,
-                            }}
-                            >
-                              <span class="capitalize text-13-medium text-text-strong">{agent.name}</span>
-                              <Show when={agent.description}>
-                                <Tooltip
-                                  placement="right"
-                                  value={<span class="text-12-regular text-text-on-interactive-base">{agent.description}</span>}
-                                >
-                                  <span class="text-12-regular text-text-weak truncate max-w-24">{agent.description}</span>
-                                </Tooltip>
-                              </Show>
-                            </DropdownMenu.Item>
-                          )}
-                        </For>
-                      <DropdownMenu.Separator class="my-1 h-px bg-border-base" />
-                      <div class="px-2 py-1 text-11-regular text-text-subtle">
-                        Press Tab to cycle
-                      </div>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu>
-                <Show
-                  when={!isOhMyMode()}
-                  fallback={
-                    <Tooltip placement="top" value="Model selection is managed by Oh My OpenCode">
-                      <Button variant="ghost" disabled>
-                        Default
-                      </Button>
-                    </Tooltip>
-                  }
-                >
-                  <Show
-                    when={providers.paid().length > 0}
-                    fallback={
-                      <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                        <Button as="div" variant="ghost" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
-                          {local.model.current()?.name ?? "Select model"}
-                          <Icon name="chevron-down" size="small" />
-                        </Button>
-                      </TooltipKeybind>
-                    }
-                  >
-                    <ModelSelectorPopover>
-                      <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                        <Button as="div" variant="ghost">
-                          {local.model.current()?.name ?? "Select model"}
-                          <Icon name="chevron-down" size="small" />
-                        </Button>
-                      </TooltipKeybind>
-                    </ModelSelectorPopover>
-                  </Show>
-                </Show>
-                <Show when={!isOhMyMode() && local.model.variant.list().length > 0}>
-                  <TooltipKeybind
-                    placement="top"
-                    title="Thinking effort"
-                    keybind={command.keybind("model.variant.cycle")}
-                  >
-                    <Button
-                      variant="ghost"
-                      class="text-text-base _hidden group-hover/prompt-input:inline-block"
-                      onClick={() => local.model.variant.cycle()}
-                    >
-                      <span class="capitalize text-12-regular">{local.model.variant.current() ?? "Default"}</span>
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
+                <MegaSelector />
                 <SettingsPopover />
               </Match>
             </Switch>

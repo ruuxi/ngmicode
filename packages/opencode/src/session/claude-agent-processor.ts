@@ -664,13 +664,20 @@ export namespace ClaudeAgentProcessor {
         }
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : ""
+      const isAbortMessage = message.includes("process aborted") || message.includes("aborted by user")
       if (error instanceof Error && error.name === "AbortError") {
         log.info("claude agent aborted")
         result.finish = "aborted"
-      } else {
-        log.error("claude agent error", { error })
-        throw error
+        return result
       }
+      if (input.abort.aborted || isAbortMessage) {
+        log.info("claude agent aborted")
+        result.finish = "aborted"
+        return result
+      }
+      log.error("claude agent error", { error })
+      throw error
     } finally {
       // Cancel any pending AskUserQuestion and PlanMode requests for this session
       AskUserQuestion.cancelSession(input.sessionID)
