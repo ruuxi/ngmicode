@@ -26,6 +26,7 @@ import { DragDropProvider, DragDropSensors, DragOverlay, closestCenter } from "@
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import { getDraggableId } from "@/utils/solid-dnd"
+import { ShiftingGradient, GRAIN_DATA_URI } from "@/components/shifting-gradient"
 
 const MAX_TERMINAL_HEIGHT = 200
 
@@ -104,10 +105,7 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
 
   return (
     <div
-      class="relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
-      classList={{
-        "opacity-60": !props.isFocused(),
-      }}
+      class="relative size-full flex flex-col overflow-hidden transition-colors duration-150"
       onMouseDown={handleMouseDown}
     >
       <div
@@ -230,7 +228,7 @@ function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) 
   )
 
   return (
-    <div class="shrink-0 flex flex-col border-t border-border-weak-base bg-background-base">
+    <div class="shrink-0 flex flex-col border-t border-border-weak-base">
       {/* Terminal section */}
       <Show when={layout.terminal.opened()}>
         <div
@@ -411,6 +409,8 @@ function MultiPaneContent() {
   const globalSync = useGlobalSync()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activePaneDraggable, setActivePaneDraggable] = createSignal<string | undefined>(undefined)
+  const dragOverlayBackground = "hsl(from var(--background-base) h s l / 0.7)"
+  const overlayBackground = "hsl(from var(--background-base) h s l / 0.6)"
 
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
   const hasPanes = createMemo(() => multiPane.panes().length > 0)
@@ -534,80 +534,106 @@ function MultiPaneContent() {
   }
 
   return (
-    <div class="size-full flex flex-col bg-background-base">
-      <Show
-        when={hasPanes()}
-        fallback={
-          <div class="flex-1 flex items-center justify-center">
-            <div class="text-center">
-              <Icon name="dot-grid" size="large" class="mx-auto mb-4 text-icon-weak" />
-              <div class="text-16-medium text-text-strong mb-2">No tabs yet</div>
-              <div class="text-14-regular text-text-weak mb-6">Add a tab to start working with multiple sessions</div>
-              <Button size="large" onClick={handleAddFirstPane}>
-                <Icon name="plus" size="small" />
-                New Tab
-              </Button>
-            </div>
-          </div>
-        }
+    <div class="relative size-full flex flex-col bg-background-base overflow-hidden" style={{ isolation: "isolate" }}>
+      <ShiftingGradient class="z-0" />
+      <div
+        class="absolute inset-0 pointer-events-none z-10"
+        style={{
+          "background-color": overlayBackground,
+          "backdrop-filter": "blur(24px) saturate(1.05)",
+          "-webkit-backdrop-filter": "blur(24px) saturate(1.05)",
+        }}
       >
-        <div class="flex-1 min-h-0 flex">
-          <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-            <DragDropProvider
-              onDragStart={handlePaneDragStart}
-              onDragEnd={handlePaneDragEnd}
-              collisionDetector={closestCenter}
-            >
-              <DragDropSensors />
-              <PaneGrid
-                panes={visiblePanes()}
-                renderPane={(pane) => {
-                  const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
-                  return (
-                    <Show when={pane.directory} fallback={
-                      <HomePane paneId={pane.id} isFocused={isFocused} />
-                    }>
-                      {(directory) => (
-                        <SDKProvider directory={directory()!}>
-                          <SyncProvider>
-                            <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
-                              <SessionPane
-                                mode="multi"
-                                paneId={pane.id}
-                                directory={directory()!}
-                                sessionId={pane.sessionId}
-                                isFocused={isFocused}
-                                reviewMode="global"
-                                onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
-                                onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
-                                onClose={() => multiPane.removePane(pane.id)}
-                              />
-                            </PaneSyncedProviders>
-                          </SyncProvider>
-                        </SDKProvider>
-                      )}
-                    </Show>
-                  )
-                }}
-              />
-              <DragOverlay>
-                <Show when={activeTitle()}>
-                  {(title) => (
-                    <div class="pointer-events-none rounded-md border border-border-weak-base bg-background-base px-3 py-2 shadow-xs-border-base">
-                      <div class="text-12-medium text-text-strong">{title()}</div>
-                      <Show when={activeProject()}>
-                        {(project) => <div class="text-11-regular text-text-weak">{project()}</div>}
+        <div
+          class="absolute inset-0"
+          style={{
+            "background-image": `url("${GRAIN_DATA_URI}")`,
+            "background-repeat": "repeat",
+            "background-size": "120px 120px",
+            "mix-blend-mode": "soft-light",
+            filter: "contrast(180%)",
+            opacity: "0.24",
+          }}
+        />
+      </div>
+      <div class="relative z-20 flex-1 min-h-0 flex flex-col">
+        <Show
+          when={hasPanes()}
+          fallback={
+            <div class="flex-1 flex items-center justify-center">
+              <div class="text-center">
+                <Icon name="dot-grid" size="large" class="mx-auto mb-4 text-icon-weak" />
+                <div class="text-16-medium text-text-strong mb-2">No tabs yet</div>
+                <div class="text-14-regular text-text-weak mb-6">Add a tab to start working with multiple sessions</div>
+                <Button size="large" onClick={handleAddFirstPane}>
+                  <Icon name="plus" size="small" />
+                  New Tab
+                </Button>
+              </div>
+            </div>
+          }
+        >
+          <div class="flex-1 min-h-0 flex">
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+              <DragDropProvider
+                onDragStart={handlePaneDragStart}
+                onDragEnd={handlePaneDragEnd}
+                collisionDetector={closestCenter}
+              >
+                <DragDropSensors />
+                <PaneGrid
+                  panes={visiblePanes()}
+                  renderPane={(pane) => {
+                    const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+                    return (
+                      <Show when={pane.directory} fallback={
+                        <HomePane paneId={pane.id} isFocused={isFocused} />
+                      }>
+                        {(directory) => (
+                          <SDKProvider directory={directory()!}>
+                            <SyncProvider>
+                              <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
+                                <SessionPane
+                                  mode="multi"
+                                  paneId={pane.id}
+                                  directory={directory()!}
+                                  sessionId={pane.sessionId}
+                                  isFocused={isFocused}
+                                  reviewMode="global"
+                                  onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
+                                  onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
+                                  onClose={() => multiPane.removePane(pane.id)}
+                                />
+                              </PaneSyncedProviders>
+                            </SyncProvider>
+                          </SDKProvider>
+                        )}
                       </Show>
-                    </div>
-                  )}
-                </Show>
-              </DragOverlay>
-            </DragDropProvider>
+                    )
+                  }}
+                />
+                <DragOverlay>
+                  <Show when={activeTitle()}>
+                    {(title) => (
+                    <div
+                      class="pointer-events-none rounded-md border border-border-weak-base px-3 py-2 shadow-xs-border-base"
+                      style={{ "background-color": dragOverlayBackground }}
+                    >
+                        <div class="text-12-medium text-text-strong">{title()}</div>
+                        <Show when={activeProject()}>
+                          {(project) => <div class="text-11-regular text-text-weak">{project()}</div>}
+                        </Show>
+                      </div>
+                    )}
+                  </Show>
+                </DragOverlay>
+              </DragDropProvider>
+            </div>
+            <GlobalReviewWrapper />
           </div>
-          <GlobalReviewWrapper />
-        </div>
-        <GlobalPromptWrapper />
-      </Show>
+          <GlobalPromptWrapper />
+        </Show>
+      </div>
     </div>
   )
 }

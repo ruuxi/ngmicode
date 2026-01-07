@@ -328,15 +328,13 @@ export function SessionPane(props: SessionPaneProps) {
   // Multi mode container styles
   const multiContainerClass = () =>
     props.mode === "multi"
-      ? "relative size-full flex flex-col overflow-hidden bg-background-base transition-opacity duration-150"
-      : "relative bg-background-base size-full overflow-hidden flex flex-col"
+      ? "relative size-full flex flex-col overflow-hidden transition-colors duration-150"
+      : "relative size-full overflow-hidden flex flex-col transition-colors duration-150"
 
-  const multiContainerClassList = () =>
-    props.mode === "multi"
-      ? {
-          "opacity-60": !isFocused(),
-        }
-      : {}
+  const multiContainerClassList = () => ({
+    "bg-background-base": props.mode === "single",
+    "opacity-60": props.mode === "multi" && !isFocused(),
+  })
 
   const handleMultiPaneMouseDown = (event: MouseEvent) => {
     if (props.mode !== "multi" || !props.paneId || !multiPane) return
@@ -382,6 +380,7 @@ export function SessionPane(props: SessionPaneProps) {
           mode="single"
           directory={props.directory}
           sessionId={sessionId()}
+          isFocused={isFocused}
         />
       </Show>
       <Show when={props.mode === "multi"}>
@@ -413,6 +412,7 @@ export function SessionPane(props: SessionPaneProps) {
             paneId={props.paneId}
             directory={props.directory}
             sessionId={sessionId()}
+            isFocused={isFocused}
             onSessionChange={props.onSessionChange}
             onDirectoryChange={props.onDirectoryChange}
             onClose={props.onClose}
@@ -438,9 +438,12 @@ export function SessionPane(props: SessionPaneProps) {
             {/* Desktop view */}
             <div class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}>
               <div
-                class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full bg-background-stronger"
+                class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full"
                 style={{
                   width: showTabs() ? `${layout.session.width()}px` : "100%",
+                }}
+                classList={{
+                  "bg-background-stronger": props.mode === "single",
                 }}
               >
                 <div class="flex-1 min-h-0 overflow-hidden">

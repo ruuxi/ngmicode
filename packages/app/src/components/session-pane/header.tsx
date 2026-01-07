@@ -1,4 +1,4 @@
-import { Show, createMemo, createResource } from "solid-js"
+import { Show, createMemo, createResource, type Accessor } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -31,6 +31,7 @@ export interface SessionPaneHeaderProps {
   directory: string
   sessionId?: string
   paneId?: string
+  isFocused?: Accessor<boolean>
   onMobileMenuToggle?: () => void
   onSessionChange?: (sessionId: string | undefined) => void
   onDirectoryChange?: (directory: string) => void
@@ -52,6 +53,7 @@ export function SessionPaneHeader(props: SessionPaneHeaderProps) {
   const currentSession = createMemo(() => sessions().find((s) => s.id === props.sessionId))
   const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
   const branch = createMemo(() => sync.data.vcs?.branch)
+  const focused = createMemo(() => props.isFocused?.() ?? true)
 
   function navigateToProject(directory: string | undefined) {
     if (!directory) return
@@ -280,7 +282,13 @@ export function SessionPaneHeader(props: SessionPaneHeaderProps) {
 
   // Multi mode header (compact overlay)
   return (
-    <header class="shrink-0 bg-background-base border-b border-border-accent-base flex flex-col">
+    <header
+      class="shrink-0 border-b flex flex-col"
+      classList={{
+        "border-border-accent-base": focused(),
+        "border-border-weak-base": !focused(),
+      }}
+    >
       <div class="h-8 flex items-center px-2 gap-1">
         <div class="flex items-center gap-1 min-w-0 flex-1">
           <Select

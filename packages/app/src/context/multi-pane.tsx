@@ -1,6 +1,7 @@
 import { createStore, produce } from "solid-js/store"
 import { batch, createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
+import { triggerShiftingGradient } from "@/components/shifting-gradient"
 
 export type PaneConfig = {
   id: string
@@ -88,6 +89,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         if (newPage !== store.currentPage) {
           setStore("currentPage", newPage)
         }
+        triggerShiftingGradient()
         return id
       },
 
@@ -115,6 +117,8 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
             setStore("currentPage", newTotalPages - 1)
           }
         })
+
+        triggerShiftingGradient()
       },
 
       updatePane(id: string, updates: Partial<Omit<PaneConfig, "id">>) {
