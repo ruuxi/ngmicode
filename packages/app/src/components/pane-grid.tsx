@@ -4,9 +4,13 @@ import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
 import { useRadialDial } from "@/hooks/use-radial-dial"
 import { RadialDialMenu } from "@opencode-ai/ui/radial-dial-menu"
 
-const MIN_PANE_SIZE_PERCENT = 15
+const MAX_GRID_COLS = 4
+const MAX_GRID_ROWS = 3
+const MIN_COL_FRACTION = 1 / MAX_GRID_COLS
+const MIN_ROW_FRACTION = 1 / MAX_GRID_ROWS
 const FLIP_DURATION = 200
 const GRID_GAP = 6
+const CORNER_HIT_SIZE = 10
 
 type PaneGridProps = ParentProps<{
   panes: PaneConfig[]
@@ -162,6 +166,38 @@ export function PaneGrid(props: PaneGridProps) {
   const [colSizes, setColSizes] = createSignal<number[] | null>(null)
   const [rowSizes, setRowSizes] = createSignal<number[] | null>(null)
 
+  function buildSizes(
+    count: number,
+    startSizes: number[],
+    index: number,
+    cursorPos: number,
+    containerSize: number,
+    minFraction: number,
+  ) {
+    const totalGapSpace = (count - 1) * GRID_GAP
+    const availableSpace = containerSize - totalGapSpace
+    const safeSpace = Math.max(availableSpace, 1)
+    const gapsBefore = index * GRID_GAP
+    const contentPosBefore = cursorPos - gapsBefore - GRID_GAP / 2
+    const totalFr = startSizes.reduce((a, b) => a + b, 0)
+    const minFr = minFraction * totalFr
+    const unclampedBefore = (contentPosBefore / safeSpace) * totalFr
+    const beforeFr = Math.min(Math.max(unclampedBefore, minFr), totalFr - minFr)
+    const afterFr = totalFr - beforeFr
+    const newSizes = [...startSizes]
+    const sumBefore = startSizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+    const sumAfter = startSizes.slice(index + 1).reduce((a, b) => a + b, 0)
+
+    Array.from({ length: index + 1 }, (_, i) => i).forEach((i) => {
+      newSizes[i] = (startSizes[i] / sumBefore) * beforeFr
+    })
+    Array.from({ length: count - index - 1 }, (_, offset) => offset + index + 1).forEach((i) => {
+      newSizes[i] = (startSizes[i] / sumAfter) * afterFr
+    })
+
+    return newSizes
+  }
+
   // Use fr units for proper gap handling
   const actualGridCols = createMemo(() => {
     const cols = layout().columns
@@ -184,7 +220,6 @@ export function PaneGrid(props: PaneGridProps) {
   function handleResizeStart(type: "col" | "row", index: number, e: MouseEvent) {
     e.preventDefault()
     const count = type === "col" ? layout().columns : layout().rows
-    const gap = GRID_GAP
 
     // Initialize sizes if not set
     const currentSizes = type === "col" ? colSizes() : rowSizes()
@@ -199,56 +234,53 @@ export function PaneGrid(props: PaneGridProps) {
       const rect = containerRef.getBoundingClientRect()
       const containerSize = type === "col" ? rect.width : rect.height
       const cursorPos = type === "col" ? moveEvent.clientX - rect.left : moveEvent.clientY - rect.top
-
-      // Account for gaps: total gap space = (count - 1) * gap
-      const totalGapSpace = (count - 1) * gap
-      const availableSpace = containerSize - totalGapSpace
-
-      // Calculate cumulative gap space before this handle
-      const gapsBefore = index * gap
-
-      // The cursor position relative to available content space
-      // Subtract the gaps that come before the handle position
-      const contentPosBefore = cursorPos - gapsBefore - gap / 2
-      const contentPosAfter = availableSpace - contentPosBefore
-
-      // Convert to proportions
-      const totalFr = startSizes.reduce((a, b) => a + b, 0)
-      const minFr = (MIN_PANE_SIZE_PERCENT / 100) * totalFr
-
-      // Calculate fr values based on cursor position
-      let beforeFr = (contentPosBefore / availableSpace) * totalFr
-      let afterFr = (contentPosAfter / availableSpace) * totalFr
-
-      // Clamp to min size
-      if (beforeFr < minFr) {
-        beforeFr = minFr
-        afterFr = totalFr - beforeFr
-      } else if (afterFr < minFr) {
-        afterFr = minFr
-        beforeFr = totalFr - afterFr
-      }
-
-      // Distribute the fr values to the cells
-      const newSizes = [...startSizes]
-
-      // Sum of fr values before and after the handle
-      const sumBefore = startSizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-      const sumAfter = startSizes.slice(index + 1).reduce((a, b) => a + b, 0)
-
-      // Scale each side proportionally
-      for (let i = 0; i <= index; i++) {
-        newSizes[i] = (startSizes[i] / sumBefore) * beforeFr
-      }
-      for (let i = index + 1; i < count; i++) {
-        newSizes[i] = (startSizes[i] / sumAfter) * afterFr
-      }
+      const minFraction = type === "col" ? MIN_COL_FRACTION : MIN_ROW_FRACTION
+      const newSizes = buildSizes(count, startSizes, index, cursorPos, containerSize, minFraction)
 
       if (type === "col") {
         setColSizes(newSizes)
-      } else {
-        setRowSizes(newSizes)
+        return
       }
+      setRowSizes(newSizes)
+    }
+
+    const cleanup = () => {
+      document.body.style.userSelect = ""
+      document.body.style.cursor = ""
+      document.removeEventListener("mousemove", onMouseMove)
+      document.removeEventListener("mouseup", onMouseUp)
+      resizeCleanup = null
+    }
+
+    const onMouseUp = () => cleanup()
+
+    resizeCleanup = cleanup
+    document.addEventListener("mousemove", onMouseMove)
+    document.addEventListener("mouseup", onMouseUp)
+  }
+
+  function handleCornerResizeStart(colIndex: number, rowIndex: number, e: MouseEvent) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const cols = layout().columns
+    const rows = layout().rows
+    const startCols = colSizes() ?? Array(cols).fill(1)
+    const startRows = rowSizes() ?? Array(rows).fill(1)
+
+    document.body.style.userSelect = "none"
+    document.body.style.cursor = "nwse-resize"
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!containerRef) return
+
+      const rect = containerRef.getBoundingClientRect()
+      const colPos = moveEvent.clientX - rect.left
+      const rowPos = moveEvent.clientY - rect.top
+      const newCols = buildSizes(cols, startCols, colIndex, colPos, rect.width, MIN_COL_FRACTION)
+      const newRows = buildSizes(rows, startRows, rowIndex, rowPos, rect.height, MIN_ROW_FRACTION)
+
+      setColSizes(newCols)
+      setRowSizes(newRows)
     }
 
     const cleanup = () => {
@@ -282,15 +314,43 @@ export function PaneGrid(props: PaneGridProps) {
     }
   })
 
-  // Build resize handles
-  const colHandles = createMemo(() => {
+  const colPositions = createMemo(() => {
     const cols = layout().columns
-    return Array.from({ length: cols - 1 }, (_, i) => i)
+    const sizes = colSizes() ?? Array(cols).fill(1)
+    const total = sizes.reduce((a, b) => a + b, 0)
+    const totalGaps = (cols - 1) * GRID_GAP
+    return Array.from({ length: cols - 1 }, (_, index) => {
+      const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+      const fraction = before / total
+      const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+      return `calc(${fraction * 100}% + ${pxOffset}px)`
+    })
   })
 
-  const rowHandles = createMemo(() => {
+  const rowPositions = createMemo(() => {
     const rows = layout().rows
-    return Array.from({ length: rows - 1 }, (_, i) => i)
+    const sizes = rowSizes() ?? Array(rows).fill(1)
+    const total = sizes.reduce((a, b) => a + b, 0)
+    const totalGaps = (rows - 1) * GRID_GAP
+    return Array.from({ length: rows - 1 }, (_, index) => {
+      const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+      const fraction = before / total
+      const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+      return `calc(${fraction * 100}% + ${pxOffset}px)`
+    })
+  })
+
+  const cornerPositions = createMemo(() => {
+    const cols = colPositions()
+    const rows = rowPositions()
+    return cols.flatMap((left, colIndex) =>
+      rows.map((top, rowIndex) => ({
+        left,
+        top,
+        col: colIndex,
+        row: rowIndex,
+      })),
+    )
   })
 
   const maximizedPane = createMemo(() => {
@@ -340,26 +400,30 @@ export function PaneGrid(props: PaneGridProps) {
           </For>
         </div>
 
-        {/* Column resize handles */}
-        <For each={colHandles()}>
-          {(index) => {
-            const handlePos = createMemo(() => {
-              const cols = layout().columns
-              const sizes = colSizes() ?? Array(cols).fill(1)
-              const total = sizes.reduce((a, b) => a + b, 0)
-              const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-              const fraction = before / total
-              const totalGaps = (cols - 1) * GRID_GAP
-              // fraction% of container - fraction of gap space + gaps before handle + half gap
-              const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
-              return `calc(${fraction * 100}% + ${pxOffset}px)`
-            })
+        {/* Corner resize handles */}
+        <For each={cornerPositions()}>
+          {(corner) => (
+            <div
+              class="absolute -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize z-20"
+              style={{
+                left: corner.left,
+                top: corner.top,
+                width: `${CORNER_HIT_SIZE}px`,
+                height: `${CORNER_HIT_SIZE}px`,
+              }}
+              onMouseDown={(e) => handleCornerResizeStart(corner.col, corner.row, e)}
+            />
+          )}
+        </For>
 
+        {/* Column resize handles */}
+        <For each={colPositions()}>
+          {(handlePos, index) => {
             return (
               <div
                 class="absolute top-0 bottom-0 w-3 -translate-x-1/2 cursor-col-resize z-10 group"
-                style={{ left: handlePos() }}
-                onMouseDown={(e) => handleResizeStart("col", index, e)}
+                style={{ left: handlePos }}
+                onMouseDown={(e) => handleResizeStart("col", index(), e)}
               >
                 <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
               </div>
@@ -368,24 +432,13 @@ export function PaneGrid(props: PaneGridProps) {
         </For>
 
         {/* Row resize handles */}
-        <For each={rowHandles()}>
-          {(index) => {
-            const handlePos = createMemo(() => {
-              const rows = layout().rows
-              const sizes = rowSizes() ?? Array(rows).fill(1)
-              const total = sizes.reduce((a, b) => a + b, 0)
-              const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-              const fraction = before / total
-              const totalGaps = (rows - 1) * GRID_GAP
-              const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
-              return `calc(${fraction * 100}% + ${pxOffset}px)`
-            })
-
+        <For each={rowPositions()}>
+          {(handlePos, index) => {
             return (
               <div
                 class="absolute left-0 right-0 h-3 -translate-y-1/2 cursor-row-resize z-10 group"
-                style={{ top: handlePos() }}
-                onMouseDown={(e) => handleResizeStart("row", index, e)}
+                style={{ top: handlePos }}
+                onMouseDown={(e) => handleResizeStart("row", index(), e)}
               >
                 <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
               </div>
