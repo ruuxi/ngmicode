@@ -120,6 +120,11 @@ function summarizeInput(changes: ChangeSummary[]) {
   return changes.map((change) => change.file)
 }
 
+function toolStart(state: MessageV2.ToolPart["state"]) {
+  if (state.status === "pending") return Date.now()
+  return state.time.start
+}
+
 function extractCommand(item: Record<string, unknown>) {
   const command = readString(item.command)
   return command ?? ""
@@ -348,6 +353,7 @@ export namespace CodexProcessor {
     if (!itemId) return
     const existing = ctx.toolParts.get(itemId)
     if (!existing) return
+    const start = toolStart(existing.state)
     const command = extractCommand(item)
     const output = readString(item.aggregatedOutput) ?? ctx.commandOutput.get(itemId) ?? ""
     const status = readString(item.status)
@@ -359,7 +365,7 @@ export namespace CodexProcessor {
           input: existing.state.input,
           error: `Command ${status}`,
           time: {
-            start: existing.state.time.start,
+            start,
             end: Date.now(),
           },
         },
@@ -380,7 +386,7 @@ export namespace CodexProcessor {
           exitCode: item.exitCode,
         },
         time: {
-          start: existing.state.time.start,
+          start,
           end: Date.now(),
         },
       },
@@ -393,6 +399,7 @@ export namespace CodexProcessor {
     if (!itemId) return
     const existing = ctx.toolParts.get(itemId)
     if (!existing) return
+    const start = toolStart(existing.state)
     const changeInput = readArray(item.changes).filter(isRecord) as Record<string, unknown>[]
     const summaries = summarizeChanges(changeInput)
     const diff = aggregateDiff(summaries)
@@ -405,7 +412,7 @@ export namespace CodexProcessor {
           input: existing.state.input,
           error: `File change ${status}`,
           time: {
-            start: existing.state.time.start,
+            start,
             end: Date.now(),
           },
         },
@@ -426,7 +433,7 @@ export namespace CodexProcessor {
           output: ctx.fileOutput.get(itemId),
         },
         time: {
-          start: existing.state.time.start,
+          start,
           end: Date.now(),
         },
       },
