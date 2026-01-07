@@ -96,6 +96,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         if (index === -1) return
 
         const remaining = store.panes.filter((p) => p.id !== id)
+        const isMaximized = store.maximizedPaneId === id
 
         batch(() => {
           setStore("panes", remaining)
@@ -103,6 +104,10 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
           if (store.focusedPaneId === id) {
             const newFocus = remaining[Math.min(index, remaining.length - 1)]
             setStore("focusedPaneId", newFocus?.id)
+          }
+
+          if (isMaximized) {
+            setStore("maximizedPaneId", undefined)
           }
 
           const newTotalPages = Math.max(1, Math.ceil(remaining.length / MAX_PANES_PER_PAGE))
