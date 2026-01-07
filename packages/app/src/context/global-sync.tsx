@@ -22,6 +22,7 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
+import { usePlatform } from "./platform"
 import { ErrorPage, type InitError } from "../pages/error"
 import { batch, createContext, useContext, onMount, type ParentProps, Switch, Match } from "solid-js"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -99,6 +100,8 @@ type State = {
 
 function createGlobalSync() {
   const globalSDK = useGlobalSDK()
+  const platform = usePlatform()
+  const fetchConfig = platform.fetch ? { fetch: platform.fetch } : {}
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
     error?: InitError
@@ -196,6 +199,7 @@ function createGlobalSync() {
       baseUrl: globalSDK.url,
       directory,
       throwOnError: true,
+      ...fetchConfig,
     })
 
     const blockingRequests = {
@@ -459,6 +463,7 @@ function createGlobalSync() {
           baseUrl: globalSDK.url,
           directory,
           throwOnError: true,
+          ...fetchConfig,
         })
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break

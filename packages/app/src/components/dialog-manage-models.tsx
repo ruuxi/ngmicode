@@ -7,7 +7,9 @@ import { popularProviders } from "@/hooks/use-providers"
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
-  const models = createMemo(() => local.model.list().filter((m) => m.provider.id !== "claude-agent"))
+  const models = createMemo(() =>
+    local.model.list().filter((m) => m.provider.id !== "claude-agent" && m.provider.id !== "codex"),
+  )
   return (
     <Dialog title="Manage models" description="Customize which models appear in the model selector.">
       <List

@@ -261,7 +261,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           ? candidates.filter((agent) => allowed.has(agent.name))
           : candidates.filter((agent) => agent.mode !== "subagent" && !agent.hidden)
 
-        if (active?.id === "opencode" || active?.id === "claude-code") {
+        if (active?.id === "opencode" || active?.id === "claude-code" || active?.id === "codex") {
           for (const name of ["build", "plan"]) {
             const agent = candidates.find((item) => item.name === name)
             if (agent && !visible.some((item) => item.name === name)) {

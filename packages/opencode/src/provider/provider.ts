@@ -37,6 +37,7 @@ import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ClaudeAgent } from "./claude-agent"
+import { CodexProvider } from "./codex"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -656,6 +657,22 @@ export namespace Provider {
     // Add Claude Agent provider (uses Anthropic Agent SDK)
     database["claude-agent"] = ClaudeAgent.PROVIDER
 
+    const codexAccount = await CodexProvider.account()
+    const codexReady = codexAccount
+      ? codexAccount.requiresOpenaiAuth === false || codexAccount.account !== undefined
+      : false
+    if (codexReady) {
+      const codexModels = await CodexProvider.listModels()
+      if (Object.keys(codexModels).length > 0) {
+        mergeProvider("codex", {
+          source: "custom",
+          models: codexModels,
+        })
+        const codexProvider = providers["codex"]
+        if (codexProvider) codexProvider.models = codexModels
+      }
+    }
+
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
       if (existing) {
@@ -880,6 +897,11 @@ export namespace Provider {
             pickBy(merged, (v) => !v.disabled),
             (v) => omit(v, ["disabled"]),
           )
+        }
+
+        if (!model.variants || Object.keys(model.variants).length === 0) {
+          const fallback = ProviderTransform.variants(model)
+          if (Object.keys(fallback).length > 0) model.variants = fallback
         }
       }
 

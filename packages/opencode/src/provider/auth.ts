@@ -6,8 +6,51 @@ import { fn } from "@/util/fn"
 import type { AuthOuathResult, Hooks } from "@opencode-ai/plugin"
 import { NamedError } from "@opencode-ai/util/error"
 import { Auth } from "@/auth"
+import { CodexAppServer } from "../codex/app-server"
 
 export namespace ProviderAuth {
+  function isRecord(input: unknown): input is Record<string, unknown> {
+    return typeof input === "object" && input !== null
+  }
+
+  function readString(input: unknown): string | undefined {
+    return typeof input === "string" ? input : undefined
+  }
+
+  function createCodexAuth(): Hooks["auth"] {
+    return {
+      provider: "codex",
+      methods: [
+        {
+          type: "oauth",
+          label: "ChatGPT",
+          async authorize() {
+            const response = await CodexAppServer.loginChatGpt()
+            const loginId = isRecord(response) ? readString(response.loginId) : undefined
+            const authUrl = isRecord(response) ? readString(response.authUrl) : undefined
+            if (!loginId || !authUrl) {
+              throw new Error("Codex login did not return an auth URL.")
+            }
+            return {
+              method: "auto",
+              url: authUrl,
+              instructions: "Complete sign-in in the browser to finish connecting.",
+              async callback() {
+                const result = await CodexAppServer.waitForLogin(loginId)
+                if (!result.success) return { type: "failed" }
+                return { type: "success", key: "codex" }
+              },
+            }
+          },
+        },
+        {
+          type: "api",
+          label: "API key",
+        },
+      ],
+    }
+  }
+
   const state = Instance.state(async () => {
     const methods = pipe(
       await Plugin.list(),
@@ -15,6 +58,8 @@ export namespace ProviderAuth {
       map((x) => [x.auth!.provider, x.auth!] as const),
       fromEntries(),
     )
+    const codexAuth = createCodexAuth()
+    methods[codexAuth.provider] = codexAuth
     return { methods, pending: {} as Record<string, AuthOuathResult> }
   })
 
@@ -110,6 +155,7 @@ export namespace ProviderAuth {
       }
 
       if (result?.type === "success") {
+        if (actualProviderID === "codex") return
         if ("key" in result) {
           // Store under the actual provider (anthropic) so both can use it
           await Auth.set(actualProviderID, {

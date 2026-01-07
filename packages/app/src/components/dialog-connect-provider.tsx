@@ -11,7 +11,7 @@ import { Spinner } from "@opencode-ai/ui/spinner"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@opencode-ai/ui/toast"
 import { iife } from "@opencode-ai/util/iife"
-import { createMemo, Match, onCleanup, onMount, Switch } from "solid-js"
+import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -26,6 +26,7 @@ export function DialogConnectProvider(props: { provider: string }) {
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.provider)!)
+  const iconId = createMemo(() => (props.provider === "codex" ? "openai" : props.provider))
   const methods = createMemo(
     () =>
       globalSync.data.provider_auth[props.provider] ?? [
@@ -136,9 +137,9 @@ export function DialogConnectProvider(props: { provider: string }) {
 
   return (
     <Dialog title={<IconButton tabIndex={-1} icon="arrow-left" variant="ghost" onClick={goBack} />}>
-      <div class="flex flex-col gap-6 px-2.5 pb-3">
-        <div class="px-2.5 flex gap-4 items-center">
-          <ProviderIcon id={props.provider as IconName} class="size-5 shrink-0 icon-strong-base" />
+        <div class="flex flex-col gap-6 px-2.5 pb-3">
+          <div class="px-2.5 flex gap-4 items-center">
+          <ProviderIcon id={iconId() as IconName} class="size-5 shrink-0 icon-strong-base" />
           <div class="text-16-medium text-text-strong">
             <Switch>
               <Match when={props.provider === "anthropic" && method()?.label?.toLowerCase().includes("max")}>
@@ -344,6 +345,10 @@ export function DialogConnectProvider(props: { provider: string }) {
                       }
                       return instructions
                     })
+                    const showCode = createMemo(() => props.provider !== "codex" && !!code())
+                    const waitingLabel = createMemo(() =>
+                      props.provider === "codex" ? "Waiting for ChatGPT login..." : "Waiting for authorization...",
+                    )
 
                     onMount(async () => {
                       const result = await globalSDK.client.provider.oauth.callback({
@@ -361,13 +366,26 @@ export function DialogConnectProvider(props: { provider: string }) {
                     return (
                       <div class="flex flex-col gap-6">
                         <div class="text-14-regular text-text-base">
-                          Visit <Link href={store.authorization!.url}>this link</Link> and enter the code below to
-                          connect your account and use {provider().name} models in OpenCode.
+                          <Switch>
+                            <Match when={props.provider === "codex"}>
+                              Visit <Link href={store.authorization!.url}>this link</Link> to sign in with ChatGPT and
+                              return here to finish connecting.
+                            </Match>
+                            <Match when={true}>
+                              Visit <Link href={store.authorization!.url}>this link</Link> and enter the code below to
+                              connect your account and use {provider().name} models in OpenCode.
+                            </Match>
+                          </Switch>
                         </div>
-                        <TextField label="Confirmation code" class="font-mono" value={code()} readOnly copyable />
+                        <Show when={props.provider === "codex"}>
+                          <TextField label="Login link" value={store.authorization!.url} readOnly copyable />
+                        </Show>
+                        <Show when={showCode()}>
+                          <TextField label="Confirmation code" class="font-mono" value={code()} readOnly copyable />
+                        </Show>
                         <div class="text-14-regular text-text-base flex items-center gap-4">
                           <Spinner />
-                          <span>Waiting for authorization...</span>
+                          <span>{waitingLabel()}</span>
                         </div>
                       </div>
                     )

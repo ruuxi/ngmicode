@@ -1,4 +1,4 @@
-export type ModeId = "claude-code" | "opencode" | "oh-my-opencode" | (string & {})
+export type ModeId = "claude-code" | "codex" | "opencode" | "oh-my-opencode" | (string & {})
 
 export type ModeProviderOverride = string | undefined
 

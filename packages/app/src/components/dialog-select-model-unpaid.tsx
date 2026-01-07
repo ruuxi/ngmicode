@@ -16,7 +16,9 @@ export const DialogSelectModelUnpaid: Component = () => {
   const dialog = useDialog()
   const providers = useProviders()
   const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
-  const models = createMemo(() => local.model.list().filter((m) => m.provider.id !== "claude-agent"))
+  const models = createMemo(() =>
+    local.model.list().filter((m) => m.provider.id !== "claude-agent" && m.provider.id !== "codex"),
+  )
   const popularItems = createMemo(() => providers.popular().filter((provider) => provider.id !== "claude-agent"))
 
   if (isOhMyMode()) {
@@ -93,7 +95,10 @@ export const DialogSelectModelUnpaid: Component = () => {
               >
                 {(i) => (
                   <div class="w-full flex items-center gap-x-3">
-                    <ProviderIcon data-slot="list-item-extra-icon" id={i.id as IconName} />
+                    <ProviderIcon
+                      data-slot="list-item-extra-icon"
+                      id={(i.id === "codex" ? "openai" : i.id) as IconName}
+                    />
                     <span>{i.name}</span>
                     <Show when={i.id === "opencode"}>
                       <Tag>Recommended</Tag>

@@ -10,6 +10,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Switch } from "@opencode-ai/ui/switch"
 import { DialogSelectProvider } from "./dialog-select-provider"
 import { DialogManageModels } from "./dialog-manage-models"
+import { DialogConnectProvider } from "./dialog-connect-provider"
 
 const ModelList: Component<{
   provider?: string
@@ -18,6 +19,7 @@ const ModelList: Component<{
 }> = (props) => {
   const local = useLocal()
   const isClaudeCodeMode = createMemo(() => local.mode.current()?.id === "claude-code")
+  const isCodexMode = createMemo(() => local.mode.current()?.id === "codex")
 
   const models = createMemo(() =>
     local.model
@@ -28,11 +30,14 @@ const ModelList: Component<{
         if (isClaudeCodeMode()) {
           return m.provider.id === "claude-agent" || m.provider.id === "openrouter"
         }
-        return m.provider.id !== "claude-agent"
+        if (isCodexMode()) {
+          return m.provider.id === "codex"
+        }
+        return m.provider.id !== "claude-agent" && m.provider.id !== "codex"
       })
       .filter((m) => {
         // Skip visibility check for claude-agent models since they're always available
-        if (m.provider.id === "claude-agent") return true
+        if (m.provider.id === "claude-agent" || m.provider.id === "codex") return true
         return local.model.visible({ modelID: m.id, providerID: m.provider.id })
       })
       .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
@@ -120,6 +125,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const local = useLocal()
   const isOhMyMode = createMemo(() => local.mode.current()?.id === "oh-my-opencode")
   const isClaudeCodeMode = createMemo(() => local.mode.current()?.id === "claude-code")
+  const isCodexMode = createMemo(() => local.mode.current()?.id === "codex")
 
   if (isOhMyMode()) {
     return (
@@ -127,6 +133,27 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         <div class="px-3 pb-6 text-13-regular text-text-weak">
           Model selection is managed by Oh My OpenCode. The current agent will use its configured default model.
         </div>
+      </Dialog>
+    )
+  }
+
+  if (isCodexMode()) {
+    return (
+      <Dialog
+        title="Select model"
+        description="Codex models"
+        action={
+          <Button
+            class="h-7 -my-1 text-14-medium"
+            icon="plus-small"
+            tabIndex={-1}
+            onClick={() => dialog.show(() => <DialogConnectProvider provider="codex" />)}
+          >
+            Connect Codex
+          </Button>
+        }
+      >
+        <ModelList provider="codex" onSelect={() => dialog.close()} />
       </Dialog>
     )
   }

@@ -16,6 +16,17 @@ export const BUILTIN_MODES: ModeDefinition[] = [
     builtin: true,
   },
   {
+    id: "codex",
+    name: "Codex",
+    description: "Codex workflows powered by the Codex app-server.",
+    icon: "pencil-line",
+    color: "#10A37F",
+    providerOverride: "codex",
+    defaultAgent: "build",
+    allowedAgents: ["build", "plan"],
+    builtin: true,
+  },
+  {
     id: "opencode",
     name: "OpenCode",
     description: "Standard OpenCode behavior with your preferred provider.",

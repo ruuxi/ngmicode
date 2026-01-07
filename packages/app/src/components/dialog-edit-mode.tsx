@@ -126,6 +126,8 @@ export const DialogEditMode: Component<{ mode: ModeDefinition }> = (props) => {
   const ohMySettings = () => store.settings?.ohMyOpenCode
   const isOhMyMode = () => props.mode.id === "oh-my-opencode"
   const isClaudeCode = () => props.mode.id === "claude-code"
+  const isCodexMode = () => props.mode.id === "codex"
+  const isLockedProvider = () => isClaudeCode() || isCodexMode()
   const hasOverrides = createMemo(() => !!local.mode.getOverride(props.mode.id))
 
   const toggleListValue = (key: "disabledAgents" | "disabledHooks", value: string, enabled: boolean) => {
@@ -145,7 +147,7 @@ export const DialogEditMode: Component<{ mode: ModeDefinition }> = (props) => {
       name: store.name.trim() || baseMode().name,
       description: store.description.trim() || undefined,
       color: store.color.trim() || undefined,
-      providerOverride: isClaudeCode() ? props.mode.providerOverride : store.providerOverride ?? undefined,
+      providerOverride: isLockedProvider() ? props.mode.providerOverride : store.providerOverride ?? undefined,
       defaultAgent: store.defaultAgent ?? undefined,
       settings: store.settings,
     })
@@ -191,7 +193,7 @@ export const DialogEditMode: Component<{ mode: ModeDefinition }> = (props) => {
           <div class="flex flex-col gap-2">
             <label class="text-12-medium text-text-weak">Default provider</label>
             <Show
-              when={!isClaudeCode()}
+              when={!isLockedProvider()}
               fallback={
                 <div class="text-13-regular text-text-strong px-2 py-1.5 rounded-md border border-border-base bg-surface-raised-base">
                   {props.mode.providerOverride ?? "claude-agent"}

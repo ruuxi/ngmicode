@@ -233,6 +233,15 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: "Write",
         subtitle: filePath ? getFilename(filePath) : undefined,
       }
+    case "patch": {
+      const files = Array.isArray(input.files) ? input.files : []
+      const first = typeof files[0] === "string" ? files[0] : undefined
+      return {
+        icon: "code-lines",
+        title: "Patch",
+        subtitle: first ? getFilename(first) : undefined,
+      }
+    }
     case "todowrite":
       return {
         icon: "checklist",
@@ -990,6 +999,66 @@ ToolRegistry.register({
           </div>
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "patch",
+  render(props) {
+    const changes = createMemo(() => (Array.isArray(props.metadata.changes) ? props.metadata.changes : []))
+    const fileList = createMemo(() => {
+      const inputFiles = Array.isArray(props.input.files) ? props.input.files : []
+      const direct = inputFiles.filter((file): file is string => typeof file === "string")
+      if (direct.length > 0) return direct
+      return changes()
+        .map((change) => (change && typeof change.file === "string" ? change.file : ""))
+        .filter((file) => file.length > 0)
+    })
+    const firstFile = createMemo(() => fileList()[0])
+    const extraCount = createMemo(() => Math.max(0, fileList().length - 1))
+    const diff = createMemo(() => {
+      const metadataDiff = props.metadata.diff
+      if (typeof metadataDiff === "string" && metadataDiff.trim().length > 0) return metadataDiff
+      const output = props.output
+      if (typeof output === "string" && output.trim().length > 0) return output
+      return ""
+    })
+
+    return (
+      <BasicTool
+        {...props}
+        icon="code-lines"
+        trigger={
+          <div data-component="edit-trigger">
+            <div data-slot="message-part-title-area">
+              <div data-slot="message-part-title">Patch</div>
+              <div data-slot="message-part-path">
+                <Show when={firstFile()?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(firstFile())}</span>
+                </Show>
+                <span data-slot="message-part-filename">{getFilename(firstFile() ?? "")}</span>
+                <Show when={extraCount() > 0}>
+                  <span data-slot="message-part-filename">+{extraCount()}</span>
+                </Show>
+              </div>
+            </div>
+            <div data-slot="message-part-actions">
+              <Show when={changes().length > 0}>
+                <DiffChanges changes={changes()} />
+              </Show>
+            </div>
+          </div>
+        }
+      >
+        <Show when={diff()}>
+          {(text) => (
+            <div data-component="tool-output" data-scrollable>
+              <Markdown text={`\`\`\`diff\n${text()}\n\`\`\``} />
+            </div>
+          )}
+        </Show>
       </BasicTool>
     )
   },

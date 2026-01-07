@@ -47,6 +47,7 @@ import { Shell } from "@/shell/shell"
 import { ClaudeAgentProcessor } from "./claude-agent-processor"
 import { ClaudeAgent } from "@/provider/claude-agent"
 import { ClaudePlugin } from "@/claude-plugin"
+import { CodexProcessor } from "./codex-processor"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -529,6 +530,7 @@ export namespace SessionPrompt {
 
       // pending compaction
       if (task?.type === "compaction") {
+        if (model.providerID === "codex") continue
         const result = await SessionCompaction.process({
           messages: msgs,
           parentID: lastUser.id,
@@ -542,6 +544,7 @@ export namespace SessionPrompt {
 
       // context overflow, needs compaction
       if (
+        model.providerID !== "codex" &&
         lastFinished &&
         lastFinished.summary !== true &&
         (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model }))
@@ -674,6 +677,85 @@ export namespace SessionPrompt {
           }
           assistantMessage.time.completed = Date.now()
           await Session.updateMessage(assistantMessage)
+          break
+        }
+        continue
+      }
+
+      if (model.providerID === "codex") {
+        const agent = await Agent.get(lastUser.agent)
+        const assistantMessage = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          parentID: lastUser.id,
+          role: "assistant",
+          mode: agent.name,
+          agent: agent.name,
+          path: {
+            cwd: Instance.directory,
+            root: Instance.worktree,
+          },
+          cost: 0,
+          tokens: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+          modelID: model.id,
+          providerID: model.providerID,
+          time: {
+            created: Date.now(),
+          },
+          sessionID,
+        })) as MessageV2.Assistant
+
+        const userParts = await MessageV2.parts({ sessionID, messageID: lastUser.id })
+        const promptText = userParts
+          .filter((p): p is MessageV2.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+        const images = userParts
+          .filter((p): p is MessageV2.FilePart => p.type === "file" && p.mime.startsWith("image/"))
+          .map((part) => part.url)
+
+        const result = await CodexProcessor.process({
+          sessionID,
+          assistantMessage,
+          prompt: promptText,
+          images: images.length > 0 ? images : undefined,
+          agent,
+          abort,
+          model,
+          sessionPermission: session.permission ?? [],
+          user: lastUser,
+        }).catch((error) => {
+          log.error("codex processing failed", { error })
+          if (MessageV2.AuthError.isInstance(error)) {
+            assistantMessage.error = error.toObject()
+            return undefined
+          }
+          assistantMessage.error = {
+            name: "UnknownError",
+            data: {
+              message: error instanceof Error ? error.message : "Unknown error",
+            },
+          }
+          return undefined
+        })
+
+        if (!result) {
+          assistantMessage.time.completed = Date.now()
+          await Session.updateMessage(assistantMessage)
+          break
+        }
+
+        assistantMessage.finish = result.finish
+        assistantMessage.cost = result.cost
+        assistantMessage.tokens = result.tokens
+        assistantMessage.time.completed = Date.now()
+        await Session.updateMessage(assistantMessage)
+
+        if (result.finish !== "end_turn" && result.finish !== "tool-calls") {
           break
         }
         continue
@@ -1900,6 +1982,7 @@ export namespace SessionPrompt {
     providerID: string
     modelID: string
   }) {
+    if (input.providerID === "codex") return
     if (input.session.parentID) return
     if (!Session.isDefaultTitle(input.session.title)) return
 

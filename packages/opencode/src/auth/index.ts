@@ -2,6 +2,7 @@ import path from "path"
 import { Global } from "../global"
 import fs from "fs/promises"
 import z from "zod"
+import { CodexAppServer } from "../codex/app-server"
 
 export namespace Auth {
   export const Oauth = z
@@ -54,6 +55,10 @@ export namespace Auth {
   }
 
   export async function set(key: string, info: Info) {
+    if (key === "codex" && info.type === "api") {
+      await CodexAppServer.loginApiKey(info.key)
+      return
+    }
     const file = Bun.file(filepath)
     const data = await all()
     await Bun.write(file, JSON.stringify({ ...data, [key]: info }, null, 2))
@@ -61,6 +66,9 @@ export namespace Auth {
   }
 
   export async function remove(key: string) {
+    if (key === "codex") {
+      await CodexAppServer.logout().catch(() => {})
+    }
     const file = Bun.file(filepath)
     const data = await all()
     delete data[key]
