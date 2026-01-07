@@ -17,6 +17,7 @@ type MultiPaneState = {
   panes: PaneConfig[]
   currentPage: number
   focusedPaneId?: string
+  maximizedPaneId?: string
 }
 
 const MAX_PANES_PER_PAGE = 12
@@ -43,6 +44,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       panes: [],
       currentPage: 0,
       focusedPaneId: undefined,
+      maximizedPaneId: undefined,
     })
 
     const totalPages = createMemo(() => Math.max(1, Math.ceil(store.panes.length / MAX_PANES_PER_PAGE)))
@@ -68,6 +70,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       layout,
       focusedPaneId: createMemo(() => store.focusedPaneId),
       focusedPane,
+      maximizedPaneId: createMemo(() => store.maximizedPaneId),
 
       addPane(directory?: string, sessionId?: string, options?: { focus?: boolean }) {
         if (store.panes.length >= MAX_TOTAL_PANES) {
@@ -166,7 +169,47 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
           setStore("panes", [])
           setStore("currentPage", 0)
           setStore("focusedPaneId", undefined)
+          setStore("maximizedPaneId", undefined)
         })
+      },
+
+      clonePane(id: string) {
+        const pane = store.panes.find((p) => p.id === id)
+        if (!pane || store.panes.length >= MAX_TOTAL_PANES) return undefined
+
+        const newId = generatePaneId()
+        const clonedPane: PaneConfig = {
+          id: newId,
+          directory: pane.directory,
+          sessionId: pane.sessionId,
+        }
+
+        const index = store.panes.findIndex((p) => p.id === id)
+        const newPanes = [...store.panes]
+        newPanes.splice(index + 1, 0, clonedPane)
+
+        batch(() => {
+          setStore("panes", newPanes)
+          setStore("focusedPaneId", newId)
+        })
+
+        const newPage = Math.floor(index / MAX_PANES_PER_PAGE)
+        if (newPage !== store.currentPage) {
+          setStore("currentPage", newPage)
+        }
+
+        return newId
+      },
+
+      toggleMaximize(id: string) {
+        if (store.maximizedPaneId === id) {
+          setStore("maximizedPaneId", undefined)
+        } else {
+          batch(() => {
+            setStore("maximizedPaneId", id)
+            setStore("focusedPaneId", id)
+          })
+        }
       },
     }
   },

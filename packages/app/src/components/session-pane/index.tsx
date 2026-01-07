@@ -464,7 +464,6 @@ export function SessionPane(props: SessionPaneProps) {
           onNavigateMulti={() => multiPane?.addPane()}
         />
       </Show>
-
     </div>
   )
 }

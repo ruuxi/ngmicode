@@ -1,5 +1,8 @@
-import { For, createMemo, createSignal, createEffect, untrack, onCleanup, type ParentProps } from "solid-js"
+import { For, Show, createMemo, createSignal, createEffect, untrack, onCleanup, type ParentProps } from "solid-js"
+import { Portal } from "solid-js/web"
 import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
+import { useRadialDial } from "@/hooks/use-radial-dial"
+import { RadialDialMenu } from "@opencode-ai/ui/radial-dial-menu"
 
 const MIN_PANE_SIZE_PERCENT = 15
 const FLIP_DURATION = 200
@@ -19,8 +22,37 @@ export function PaneGrid(props: PaneGridProps) {
   let resizeCleanup: (() => void) | null = null
 
   const layout = createMemo(() => multiPane.layout())
+  const maximizedPaneId = createMemo(() => multiPane.maximizedPaneId())
   const [paneIds, setPaneIds] = createSignal<string[]>([])
   const [lastPage, setLastPage] = createSignal(multiPane.currentPage())
+
+  // Radial dial for the entire grid area
+  const radialDial = useRadialDial({
+    onAction: (action) => {
+      const focusedId = multiPane.focusedPaneId()
+      const focusedPane = multiPane.focusedPane()
+      switch (action) {
+        case "new":
+          multiPane.addPane(focusedPane?.directory)
+          break
+        case "close":
+          if (focusedId && multiPane.panes().length > 1) {
+            multiPane.removePane(focusedId)
+          }
+          break
+        case "clone":
+          if (focusedId) {
+            multiPane.clonePane(focusedId)
+          }
+          break
+        case "focus":
+          if (focusedId) {
+            multiPane.toggleMaximize(focusedId)
+          }
+          break
+      }
+    },
+  })
 
   onCleanup(() => {
     disposed = true
@@ -261,81 +293,117 @@ export function PaneGrid(props: PaneGridProps) {
     return Array.from({ length: rows - 1 }, (_, i) => i)
   })
 
+  const maximizedPane = createMemo(() => {
+    const id = maximizedPaneId()
+    return id ? props.panes.find((p) => p.id === id) : undefined
+  })
+
   return (
-    <div ref={containerRef} class="flex-1 min-h-0 relative">
-      {/* Main grid */}
-      <div
-        class="size-full grid"
-        style={{
-          "grid-template-columns": actualGridCols(),
-          "grid-template-rows": actualGridRows(),
-          gap: `${GRID_GAP}px`,
-        }}
+    <div
+      ref={containerRef}
+      class="flex-1 min-h-0 relative"
+      onMouseDown={radialDial.handlers.onMouseDown}
+      onMouseMove={radialDial.handlers.onMouseMove}
+      onMouseUp={radialDial.handlers.onMouseUp}
+      onContextMenu={radialDial.handlers.onContextMenu}
+    >
+      <Show
+        when={!maximizedPaneId()}
+        fallback={
+          <Show when={maximizedPane()}>
+            {(pane) => (
+              <div class="size-full">
+                {props.renderPane(pane())}
+              </div>
+            )}
+          </Show>
+        }
       >
-        <For each={props.panes}>
-          {(pane) => (
-            <div
-              ref={(el) => paneRefs.set(pane.id, el)}
-              class="relative min-w-0 min-h-0 overflow-hidden"
-            >
-              {props.renderPane(pane)}
-            </div>
-          )}
+        {/* Main grid */}
+        <div
+          class="size-full grid"
+          style={{
+            "grid-template-columns": actualGridCols(),
+            "grid-template-rows": actualGridRows(),
+            gap: `${GRID_GAP}px`,
+          }}
+        >
+          <For each={props.panes}>
+            {(pane) => (
+              <div
+                ref={(el) => paneRefs.set(pane.id, el)}
+                class="relative min-w-0 min-h-0 overflow-hidden"
+              >
+                {props.renderPane(pane)}
+              </div>
+            )}
+          </For>
+        </div>
+
+        {/* Column resize handles */}
+        <For each={colHandles()}>
+          {(index) => {
+            const handlePos = createMemo(() => {
+              const cols = layout().columns
+              const sizes = colSizes() ?? Array(cols).fill(1)
+              const total = sizes.reduce((a, b) => a + b, 0)
+              const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+              const fraction = before / total
+              const totalGaps = (cols - 1) * GRID_GAP
+              // fraction% of container - fraction of gap space + gaps before handle + half gap
+              const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+              return `calc(${fraction * 100}% + ${pxOffset}px)`
+            })
+
+            return (
+              <div
+                class="absolute top-0 bottom-0 w-3 -translate-x-1/2 cursor-col-resize z-10 group"
+                style={{ left: handlePos() }}
+                onMouseDown={(e) => handleResizeStart("col", index, e)}
+              >
+                <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
+              </div>
+            )
+          }}
         </For>
-      </div>
 
-      {/* Column resize handles */}
-      <For each={colHandles()}>
-        {(index) => {
-          const handlePos = createMemo(() => {
-            const cols = layout().columns
-            const sizes = colSizes() ?? Array(cols).fill(1)
-            const total = sizes.reduce((a, b) => a + b, 0)
-            const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-            const fraction = before / total
-            const totalGaps = (cols - 1) * GRID_GAP
-            // fraction% of container - fraction of gap space + gaps before handle + half gap
-            const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
-            return `calc(${fraction * 100}% + ${pxOffset}px)`
-          })
+        {/* Row resize handles */}
+        <For each={rowHandles()}>
+          {(index) => {
+            const handlePos = createMemo(() => {
+              const rows = layout().rows
+              const sizes = rowSizes() ?? Array(rows).fill(1)
+              const total = sizes.reduce((a, b) => a + b, 0)
+              const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
+              const fraction = before / total
+              const totalGaps = (rows - 1) * GRID_GAP
+              const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
+              return `calc(${fraction * 100}% + ${pxOffset}px)`
+            })
 
-          return (
-            <div
-              class="absolute top-0 bottom-0 w-3 -translate-x-1/2 cursor-col-resize z-10 group"
-              style={{ left: handlePos() }}
-              onMouseDown={(e) => handleResizeStart("col", index, e)}
-            >
-              <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
-            </div>
-          )
-        }}
-      </For>
+            return (
+              <div
+                class="absolute left-0 right-0 h-3 -translate-y-1/2 cursor-row-resize z-10 group"
+                style={{ top: handlePos() }}
+                onMouseDown={(e) => handleResizeStart("row", index, e)}
+              >
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
+              </div>
+            )
+          }}
+        </For>
+      </Show>
 
-      {/* Row resize handles */}
-      <For each={rowHandles()}>
-        {(index) => {
-          const handlePos = createMemo(() => {
-            const rows = layout().rows
-            const sizes = rowSizes() ?? Array(rows).fill(1)
-            const total = sizes.reduce((a, b) => a + b, 0)
-            const before = sizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-            const fraction = before / total
-            const totalGaps = (rows - 1) * GRID_GAP
-            const pxOffset = -fraction * totalGaps + index * GRID_GAP + GRID_GAP / 2
-            return `calc(${fraction * 100}% + ${pxOffset}px)`
-          })
-
-          return (
-            <div
-              class="absolute left-0 right-0 h-3 -translate-y-1/2 cursor-row-resize z-10 group"
-              style={{ top: handlePos() }}
-              onMouseDown={(e) => handleResizeStart("row", index, e)}
-            >
-              <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 group-hover:bg-border-accent-base group-active:bg-border-accent-base transition-colors duration-75" />
-            </div>
-          )
-        }}
-      </For>
+      {/* Radial dial menu */}
+      <Show when={radialDial.isOpen()}>
+        <Portal>
+          <RadialDialMenu
+            centerX={radialDial.centerX()}
+            centerY={radialDial.centerY()}
+            highlightedAction={radialDial.highlightedAction()}
+          />
+        </Portal>
+      </Show>
     </div>
   )
 }
