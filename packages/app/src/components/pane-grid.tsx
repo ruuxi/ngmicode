@@ -19,7 +19,11 @@ type PaneGridProps = ParentProps<{
 export function PaneGrid(props: PaneGridProps) {
   const multiPane = useMultiPane()
   let containerRef: HTMLDivElement | undefined
+  let overlayRef: HTMLDivElement | undefined
+  let pendingFrame: number | undefined
   const paneRefs = new Map<string, HTMLDivElement>()
+  const paneBodyRefs = new Map<string, HTMLDivElement>()
+  const paneAnimations = new Map<string, Animation>()
   let previousRects = new Map<string, DOMRect>()
   let disposed = false
   let resizeCleanup: (() => void) | null = null
@@ -58,9 +62,28 @@ export function PaneGrid(props: PaneGridProps) {
   onCleanup(() => {
     disposed = true
     resizeCleanup?.()
+    if (pendingFrame) cancelAnimationFrame(pendingFrame)
+    for (const anim of paneAnimations.values()) anim.cancel()
     paneRefs.clear()
+    paneBodyRefs.clear()
+    paneAnimations.clear()
     previousRects.clear()
   })
+
+  function restorePaneBody(id: string) {
+    const body = paneBodyRefs.get(id)
+    if (!body) return
+    const slot = paneRefs.get(id)
+    if (slot && body.parentElement !== slot) {
+      slot.appendChild(body)
+    }
+    body.style.position = ""
+    body.style.left = ""
+    body.style.top = ""
+    body.style.width = ""
+    body.style.height = ""
+    body.style.pointerEvents = ""
+  }
 
   // Capture current positions of all panes
   function capturePositions(): Map<string, DOMRect> {
@@ -69,6 +92,22 @@ export function PaneGrid(props: PaneGridProps) {
       rects.set(id, el.getBoundingClientRect())
     }
     return rects
+  }
+
+  function pruneOverlay(currentIdSet: Set<string>) {
+    if (!overlayRef) return
+    for (const child of Array.from(overlayRef.children)) {
+      const el = child as HTMLDivElement
+      const id = el.dataset.paneId
+      if (!id) {
+        el.remove()
+        continue
+      }
+      const body = paneBodyRefs.get(id)
+      if (!currentIdSet.has(id) || body !== el) {
+        el.remove()
+      }
+    }
   }
 
   // Watch for pane changes and animate
@@ -85,9 +124,13 @@ export function PaneGrid(props: PaneGridProps) {
       setLastPage(currentPage)
     })
 
+    if (pendingFrame) cancelAnimationFrame(pendingFrame)
+    pendingFrame = undefined
+
     // Skip initial mount
     if (prevIds.length === 0) {
-      requestAnimationFrame(() => {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = undefined
         if (disposed) return
         previousRects = capturePositions()
       })
@@ -96,8 +139,24 @@ export function PaneGrid(props: PaneGridProps) {
 
     // Skip animation on page switch (just capture new positions)
     if (currentPage !== prevPage) {
-      requestAnimationFrame(() => {
+      // Clean up refs for removed panes (important when animations move DOM into the overlay)
+      const currentIdSet = new Set(currentIds)
+      for (const id of prevIds) {
+        if (currentIdSet.has(id)) continue
+        paneAnimations.get(id)?.cancel()
+        paneAnimations.delete(id)
+        const body = paneBodyRefs.get(id)
+        const slot = paneRefs.get(id)
+        if (body && body.parentElement && body.parentElement !== slot) {
+          body.remove()
+        }
+        paneBodyRefs.delete(id)
+        paneRefs.delete(id)
+      }
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = undefined
         if (disposed) return
+        pruneOverlay(currentIdSet)
         previousRects = capturePositions()
       })
       return
@@ -107,57 +166,107 @@ export function PaneGrid(props: PaneGridProps) {
     const currentIdSet = new Set(currentIds)
     for (const id of prevIds) {
       if (!currentIdSet.has(id)) {
+        paneAnimations.get(id)?.cancel()
+        paneAnimations.delete(id)
+        const body = paneBodyRefs.get(id)
+        const slot = paneRefs.get(id)
+        if (body && body.parentElement && body.parentElement !== slot) {
+          body.remove()
+        }
+        paneBodyRefs.delete(id)
         paneRefs.delete(id)
       }
     }
 
     // Wait for DOM to update with new panes
-    requestAnimationFrame(() => {
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = undefined
       if (disposed) return
+      if (!containerRef) return
+      if (!overlayRef) return
+
+      pruneOverlay(currentIdSet)
+      const containerRect = containerRef.getBoundingClientRect()
       const prevIdSet = new Set(prevIds)
 
       for (const [id, el] of paneRefs) {
+        const body = paneBodyRefs.get(id)
+        if (!body) continue
+        body.dataset.paneId = id
+
         const isNew = !prevIdSet.has(id)
         const prevRect = previousRects.get(id)
 
         if (isNew || !prevRect) {
+          paneAnimations.get(id)?.cancel()
+          paneAnimations.delete(id)
+          restorePaneBody(id)
           // New pane - fade in using Web Animations API
-          el.animate(
+          const anim = body.animate(
             [
-              { opacity: 0, transform: "scale(0.95)" },
-              { opacity: 1, transform: "scale(1)" },
+              { opacity: 0, transform: "translate3d(0, 8px, 0)" },
+              { opacity: 1, transform: "none" },
             ],
             { duration: FLIP_DURATION, easing: "ease-out" },
+          )
+          paneAnimations.set(id, anim)
+          anim.finished.then(
+            () => {
+              if (disposed) return
+              if (paneAnimations.get(id) !== anim) return
+              paneAnimations.delete(id)
+            },
+            () => {},
           )
           continue
         }
 
         const currentRect = el.getBoundingClientRect()
-        const deltaX = prevRect.left - currentRect.left
-        const deltaY = prevRect.top - currentRect.top
-        const scaleX = prevRect.width / currentRect.width
-        const scaleY = prevRect.height / currentRect.height
+        const oldLeft = prevRect.left - containerRect.left
+        const oldTop = prevRect.top - containerRect.top
+        const newLeft = currentRect.left - containerRect.left
+        const newTop = currentRect.top - containerRect.top
+        const moveX = Math.abs(oldLeft - newLeft)
+        const moveY = Math.abs(oldTop - newTop)
+        const widthDelta = Math.abs(prevRect.width - currentRect.width)
+        const heightDelta = Math.abs(prevRect.height - currentRect.height)
 
         // Skip if no significant change
-        if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1 && Math.abs(scaleX - 1) < 0.01 && Math.abs(scaleY - 1) < 0.01) {
+        if (moveX < 1 && moveY < 1 && widthDelta < 1 && heightDelta < 1) {
+          if (!paneAnimations.get(id)) restorePaneBody(id)
           continue
         }
 
-        // FLIP animation using Web Animations API
-        el.animate(
+        paneAnimations.get(id)?.cancel()
+        paneAnimations.delete(id)
+        overlayRef.appendChild(body)
+        body.style.position = "absolute"
+        body.style.left = `${oldLeft}px`
+        body.style.top = `${oldTop}px`
+        body.style.width = `${prevRect.width}px`
+        body.style.height = `${prevRect.height}px`
+        body.style.pointerEvents = "none"
+
+        const anim = body.animate(
           [
-            { transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`, transformOrigin: "top left" },
-            { transform: "none", transformOrigin: "top left" },
+            { left: `${oldLeft}px`, top: `${oldTop}px`, width: `${prevRect.width}px`, height: `${prevRect.height}px` },
+            { left: `${newLeft}px`, top: `${newTop}px`, width: `${currentRect.width}px`, height: `${currentRect.height}px` },
           ],
           { duration: FLIP_DURATION, easing: "ease-out" },
         )
+        paneAnimations.set(id, anim)
+        anim.finished.then(
+          () => {
+            if (disposed) return
+            if (paneAnimations.get(id) !== anim) return
+            restorePaneBody(id)
+            paneAnimations.delete(id)
+          },
+          () => {},
+        )
       }
 
-      // Capture new positions after animation
-      setTimeout(() => {
-        if (disposed) return
-        previousRects = capturePositions()
-      }, FLIP_DURATION)
+      previousRects = capturePositions()
     })
   })
 
@@ -403,10 +512,7 @@ export function PaneGrid(props: PaneGridProps) {
     )
   })
 
-  function paneStyle(index: number) {
-    const cols = layout().columns
-    const rows = layout().rows
-    const count = props.panes.length
+  function spanningPane(index: number, count: number, cols: number, rows: number) {
     if (rows < 2) return undefined
     const remainder = count % cols
     if (remainder === 0) return undefined
@@ -417,9 +523,18 @@ export function PaneGrid(props: PaneGridProps) {
     const colIndex = index - rowAboveStart
     if (colIndex < remainder) return undefined
     const startCol = colIndex + 1
+    return { row: rowAbove, startCol }
+  }
+
+  function paneStyle(index: number) {
+    const cols = layout().columns
+    const rows = layout().rows
+    const count = props.panes.length
+    const span = spanningPane(index, count, cols, rows)
+    if (!span) return undefined
     return {
-      "grid-column": `${startCol} / span 1`,
-      "grid-row": `${rowAbove} / span 2`,
+      "grid-column": `${span.startCol} / span 1`,
+      "grid-row": `${span.row} / span 2`,
     }
   }
 
@@ -469,7 +584,8 @@ export function PaneGrid(props: PaneGridProps) {
                 style={paneWrapperStyle(pane.id, index())}
               >
                 <div
-                  class="size-full transition-[opacity,transform] duration-200 ease-out"
+                  ref={(el) => paneBodyRefs.set(pane.id, el)}
+                  class="size-full overflow-hidden transition-[opacity,transform] duration-200 ease-out"
                   style={{
                     opacity: hidden() ? 0 : 1,
                     transform: hidden() ? "scale(0.98)" : "scale(1)",
@@ -482,6 +598,9 @@ export function PaneGrid(props: PaneGridProps) {
           }}
         </For>
       </div>
+
+      {/* Overlay layer for box-resize animations */}
+      <div ref={overlayRef} class="absolute inset-0 z-30 pointer-events-none" />
 
       <Show when={!maximizedPaneId()}>
         {/* Corner resize handles */}
