@@ -103,28 +103,6 @@ export const SessionListCommand = cmd({
   },
 })
 
-function truncate(input: string, maxLength: number): string {
-  if (input.length <= maxLength) return input
-  if (maxLength <= 3) return input.slice(0, maxLength)
-  return `${input.slice(0, maxLength - 3)}...`
-}
-
-function todayTimeOrDateTime(timestampMs: number): string {
-  const date = new Date(timestampMs)
-  const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
-  if (isToday) {
-    return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-  }
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
 function formatSessionTable(sessions: Session.Info[]): string {
   const lines: string[] = []
 
@@ -133,10 +111,10 @@ function formatSessionTable(sessions: Session.Info[]): string {
 
   const header = `Session ID${" ".repeat(maxIdWidth - 10)}  Title${" ".repeat(maxTitleWidth - 5)}  Updated`
   lines.push(header)
-  lines.push("-".repeat(header.length))
+  lines.push("─".repeat(header.length))
   for (const session of sessions) {
-    const truncatedTitle = truncate(session.title, maxTitleWidth)
-    const timeStr = todayTimeOrDateTime(session.time.updated)
+    const truncatedTitle = Locale.truncate(session.title, maxTitleWidth)
+    const timeStr = Locale.todayTimeOrDateTime(session.time.updated)
     const line = `${session.id.padEnd(maxIdWidth)}  ${truncatedTitle.padEnd(maxTitleWidth)}  ${timeStr}`
     lines.push(line)
   }

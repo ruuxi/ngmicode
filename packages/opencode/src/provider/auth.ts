@@ -274,7 +274,7 @@ export namespace ProviderAuth {
       }
 
       if (result?.type === "success") {
-        if (actualProviderID === "codex") return
+        if (input.providerID === "codex") return
         if ("key" in result) {
           await Auth.set(input.providerID, {
             type: "api",

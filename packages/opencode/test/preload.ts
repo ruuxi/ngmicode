@@ -31,23 +31,8 @@ const response = await fetch("https://models.dev/api.json")
 if (response.ok) {
   await fs.writeFile(path.join(cacheDir, "models.json"), await response.text())
 }
-
-// Pre-install provider SDK packages to avoid install timeouts during tests
-// BunProc.install checks if dependencies[pkg] === version before reinstalling
-// Since code requests "latest", we store "latest" as the key to skip reinstall
-const providerPackages = ["@aws-sdk/credential-providers", "@ai-sdk/openai-compatible"]
-await fs.writeFile(path.join(cacheDir, "package.json"), JSON.stringify({ dependencies: {} }))
-await Bun.$`bun add --force --exact ${providerPackages}`.cwd(cacheDir).quiet()
-const deps: Record<string, string> = {}
-for (const pkg of providerPackages) {
-  deps[pkg] = "latest"
-}
-await fs.writeFile(path.join(cacheDir, "package.json"), JSON.stringify({ dependencies: deps }))
-
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["OPENCODE_DISABLE_MODELS_FETCH"] = "true"
-// Disable default plugins (auth plugins) to avoid installation timeouts during tests
-process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]
