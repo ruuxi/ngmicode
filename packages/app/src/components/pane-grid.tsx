@@ -20,6 +20,7 @@ export function PaneGrid(props: PaneGridProps) {
   const multiPane = useMultiPane()
   let containerRef: HTMLDivElement | undefined
   const paneRefs = new Map<string, HTMLDivElement>()
+  const paneContentRefs = new Map<string, HTMLDivElement>()
   let previousRects = new Map<string, DOMRect>()
   let disposed = false
   let resizeCleanup: (() => void) | null = null
@@ -59,6 +60,7 @@ export function PaneGrid(props: PaneGridProps) {
     disposed = true
     resizeCleanup?.()
     paneRefs.clear()
+    paneContentRefs.clear()
     previousRects.clear()
   })
 
@@ -108,6 +110,7 @@ export function PaneGrid(props: PaneGridProps) {
     for (const id of prevIds) {
       if (!currentIdSet.has(id)) {
         paneRefs.delete(id)
+        paneContentRefs.delete(id)
       }
     }
 
@@ -117,15 +120,24 @@ export function PaneGrid(props: PaneGridProps) {
       const prevIdSet = new Set(prevIds)
 
       for (const [id, el] of paneRefs) {
+        const content = paneContentRefs.get(id)
         const isNew = !prevIdSet.has(id)
         const prevRect = previousRects.get(id)
 
         if (isNew || !prevRect) {
+          const scale = 0.95
           // New pane - fade in using Web Animations API
           el.animate(
             [
-              { opacity: 0, transform: "scale(0.95)" },
-              { opacity: 1, transform: "scale(1)" },
+              { opacity: 0, transform: `scale(${scale})`, transformOrigin: "center" },
+              { opacity: 1, transform: "scale(1)", transformOrigin: "center" },
+            ],
+            { duration: FLIP_DURATION, easing: "ease-out" },
+          )
+          content?.animate(
+            [
+              { transform: `scale(${1 / scale})`, transformOrigin: "center" },
+              { transform: "none", transformOrigin: "center" },
             ],
             { duration: FLIP_DURATION, easing: "ease-out" },
           )
@@ -147,6 +159,14 @@ export function PaneGrid(props: PaneGridProps) {
         el.animate(
           [
             { transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`, transformOrigin: "top left" },
+            { transform: "none", transformOrigin: "top left" },
+          ],
+          { duration: FLIP_DURATION, easing: "ease-out" },
+        )
+
+        content?.animate(
+          [
+            { transform: `scale(${1 / scaleX}, ${1 / scaleY})`, transformOrigin: "top left" },
             { transform: "none", transformOrigin: "top left" },
           ],
           { duration: FLIP_DURATION, easing: "ease-out" },
@@ -475,7 +495,9 @@ export function PaneGrid(props: PaneGridProps) {
                     transform: hidden() ? "scale(0.98)" : "scale(1)",
                   }}
                 >
-                  {props.renderPane(pane)}
+                  <div ref={(el) => paneContentRefs.set(pane.id, el)} class="size-full">
+                    {props.renderPane(pane)}
+                  </div>
                 </div>
               </div>
             )
