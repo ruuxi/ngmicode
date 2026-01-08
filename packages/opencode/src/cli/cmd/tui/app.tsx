@@ -11,6 +11,7 @@ import { SDKProvider, useSDK } from "@tui/context/sdk"
 import { SyncProvider, useSync } from "@tui/context/sync"
 import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel, useConnected } from "@tui/component/dialog-model"
+import { DialogMode } from "@tui/component/dialog-mode"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
 import { DialogThemeList } from "@tui/component/dialog-theme-list"
@@ -301,13 +302,21 @@ function App() {
       },
     },
     {
+      title: "Switch mode",
+      value: "mode.list",
+      category: "Agent",
+      onSelect: () => {
+        dialog.replace(() => <DialogMode />)
+      },
+    },
+    {
       title: "Switch model",
       value: "model.list",
       keybind: "model_list",
       suggested: true,
       category: "Agent",
       onSelect: () => {
-        dialog.replace(() => <DialogModel />)
+        dialog.replace(() => <DialogModel providerID={local.mode.providerOverride() ?? undefined} />)
       },
     },
     {
