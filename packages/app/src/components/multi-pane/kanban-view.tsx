@@ -1,5 +1,4 @@
-import { For, Show, createEffect, createMemo } from "solid-js"
-import { createStore } from "solid-js/store"
+import { For, Show, createMemo } from "solid-js"
 import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
 import { useGlobalSync } from "@/context/global-sync"
 import { SDKProvider, useSDK } from "@/context/sdk"
@@ -13,10 +12,10 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { DragDropProvider } from "@thisbeyond/solid-dnd"
-import { truncateDirectoryPrefix } from "@opencode-ai/util/path"
-import { HomeScreen } from "@/components/home-screen"
 import { SessionPane } from "@/components/session-pane"
 import { MultiPanePromptPanel } from "./prompt-panel"
+import { PaneHome } from "./pane-home"
+import { getPaneProjectLabel, getPaneState, getPaneTitle, getPaneWorking } from "@/utils/pane"
 
 type Column = {
   id: string
@@ -30,39 +29,17 @@ function PaneCard(props: { pane: PaneConfig }) {
 
   const focused = createMemo(() => multiPane.focusedPaneId() === props.pane.id)
 
-  const title = createMemo(() => {
-    const sessionId = props.pane.sessionId
-    if (!sessionId) return "New session"
-    const directory = props.pane.directory
-    if (!directory) return sessionId
-    const [store] = globalSync.child(directory)
-    const session = store.session.find((candidate) => candidate.id === sessionId)
-    return session?.title ?? sessionId
-  })
-
-  const subtitle = createMemo(() => {
-    const directory = props.pane.directory
-    if (!directory) return "No project"
-    return truncateDirectoryPrefix(directory)
-  })
-
-  const working = createMemo(() => {
-    const sessionId = props.pane.sessionId
-    const directory = props.pane.directory
-    if (!sessionId) return false
-    if (!directory) return false
-    const [store] = globalSync.child(directory)
-    const status = store.session_status[sessionId]
-    return status?.type === "busy" || status?.type === "retry"
-  })
+  const title = createMemo(() => getPaneTitle(props.pane, globalSync) ?? "New session")
+  const subtitle = createMemo(() => getPaneProjectLabel(props.pane) ?? "No project")
+  const working = createMemo(() => getPaneWorking(props.pane, globalSync))
 
   return (
     <button
       type="button"
       class="group flex flex-col gap-1 w-full rounded-md border px-3 py-2 text-left shadow-xs-border-base transition-colors"
       classList={{
-        "border-border-accent-base bg-surface-raised-base-hover": focused(),
-        "border-border-weak-base bg-background-base hover:bg-surface-raised-base-hover": !focused(),
+        "border-border-accent-base bg-surface-raised-base-active": focused(),
+        "border-border-weak-base bg-surface-raised-base hover:bg-surface-raised-base-hover": !focused(),
       }}
       onClick={() => multiPane.setFocused(props.pane.id)}
     >
@@ -82,6 +59,7 @@ function PaneCard(props: { pane: PaneConfig }) {
 function PaneColumns(props: { panes: PaneConfig[] }) {
   const multiPane = useMultiPane()
   const globalSync = useGlobalSync()
+  const focusedPaneId = createMemo(() => multiPane.focusedPaneId())
 
   const columns = createMemo<Column[]>(() => {
     const inProgress: PaneConfig[] = []
@@ -128,9 +106,11 @@ function PaneColumns(props: { panes: PaneConfig[] }) {
 
   return (
     <div class="flex-1 min-w-0 min-h-0 overflow-x-auto overflow-y-hidden">
-      <div class="h-full flex items-start gap-4 p-4">
+      <div class="h-full flex items-stretch gap-4 p-4">
         <For each={columns()}>
-          {(col) => (
+          {(col) => {
+            const active = createMemo(() => col.panes.some((pane) => pane.id === focusedPaneId()))
+            return (
             <div class="w-72 shrink-0 flex flex-col min-h-0">
               <div class="flex items-center justify-between px-1 pb-2">
                 <div class="text-11-medium text-text-weak uppercase tracking-wide">{col.title}</div>
@@ -138,57 +118,20 @@ function PaneColumns(props: { panes: PaneConfig[] }) {
                   <IconButton icon="plus" variant="ghost" onClick={() => addToColumn(undefined)} />
                 </Tooltip>
               </div>
-              <div class="flex-1 min-h-0 rounded-lg border border-border-weak-base bg-surface-raised-base p-2 overflow-y-auto no-scrollbar flex flex-col gap-2">
+              <div
+                class="flex-1 min-h-0 border p-2 overflow-y-auto no-scrollbar flex flex-col gap-2"
+                classList={{
+                  "border-border-accent-base": active(),
+                  "border-border-strong-base": !active(),
+                }}
+              >
                 <For each={col.panes}>{(pane) => <PaneCard pane={pane} />}</For>
               </div>
             </div>
-          )}
+          )
+          }}
         </For>
       </div>
-    </div>
-  )
-}
-
-function SidePanelHome(props: { paneId: string }) {
-  const multiPane = useMultiPane()
-  const globalSync = useGlobalSync()
-  const hideLogo = createMemo(() => multiPane.panes().length > 1)
-  const showRelativeTime = createMemo(() => multiPane.panes().length <= 1)
-  const [store, setStore] = createStore({ auto: false })
-
-  const mostRecentProject = createMemo(() => {
-    const sorted = globalSync.data.project.toSorted(
-      (a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created),
-    )
-    return sorted[0]?.worktree
-  })
-  const defaultProject = createMemo(() => globalSync.data.path.directory)
-  const preferredProject = createMemo(() => mostRecentProject() || defaultProject())
-
-  createEffect(() => {
-    if (store.auto) return
-    if (multiPane.focusedPaneId() !== props.paneId) return
-    const candidate = preferredProject()
-    if (!candidate) return
-    setStore("auto", true)
-    multiPane.updatePane(props.paneId, { directory: candidate, sessionId: undefined })
-    multiPane.setFocused(props.paneId)
-  })
-
-  function handleProjectSelected(directory: string) {
-    multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
-    multiPane.setFocused(props.paneId)
-  }
-
-  return (
-    <div class="flex-1 min-h-0 flex flex-col">
-      <HomeScreen
-        hideLogo={hideLogo()}
-        showRelativeTime={showRelativeTime()}
-        showThemePicker={multiPane.panes().length === 1}
-        onProjectSelected={handleProjectSelected}
-        onNavigateMulti={() => multiPane.addPane()}
-      />
     </div>
   )
 }
@@ -256,14 +199,26 @@ function PaneSidePanel() {
         }
       >
         {(pane) => (
-          <Show when={pane().directory} fallback={<SidePanelHome paneId={pane().id} />}>
-            {(directory) => (
-              <SDKProvider directory={directory()!}>
-                <SyncProvider>
-                  <SidePanelSynced paneId={pane().id} directory={directory()!} sessionId={pane().sessionId} />
-                </SyncProvider>
-              </SDKProvider>
-            )}
+          <Show
+            when={getPaneState(pane()) === "session"}
+            fallback={
+              <PaneHome
+                paneId={pane().id}
+                isFocused={() => multiPane.focusedPaneId() === pane().id}
+                selectedProject={pane().directory}
+                showBorder={false}
+              />
+            }
+          >
+            <SDKProvider directory={pane().directory!}>
+              <SyncProvider>
+                <SidePanelSynced
+                  paneId={pane().id}
+                  directory={pane().directory!}
+                  sessionId={pane().sessionId!}
+                />
+              </SyncProvider>
+            </SDKProvider>
           </Show>
         )}
       </Show>

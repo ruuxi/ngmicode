@@ -5,7 +5,6 @@ import { PaneGrid } from "@/components/pane-grid"
 import { SessionPane } from "@/components/session-pane"
 import { ReviewPanel } from "@/components/session-pane/review-panel"
 import { useLayout } from "@/context/layout"
-import { HomeScreen } from "@/components/home-screen"
 import { useGlobalSync } from "@/context/global-sync"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -18,11 +17,12 @@ import { PromptProvider } from "@/context/prompt"
 import { FileProvider } from "@/context/file"
 import { DragDropProvider, DragDropSensors, DragOverlay, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
-import { truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import { getDraggableId } from "@/utils/solid-dnd"
 import { ShiftingGradient, GRAIN_DATA_URI } from "@/components/shifting-gradient"
 import { MultiPanePromptPanel } from "@/components/multi-pane/prompt-panel"
 import { MultiPaneKanbanView } from "@/components/multi-pane/kanban-view"
+import { PaneHome } from "@/components/multi-pane/pane-home"
+import { getPaneProjectLabel, getPaneState, getPaneTitle } from "@/utils/pane"
 
 // Provider wrapper for each pane (provides Local/Terminal context needed by SessionPane)
 function PaneSyncedProviders(props: { paneId: string; directory: string; children: any }) {
@@ -43,68 +43,6 @@ function PaneSyncedProviders(props: { paneId: string; directory: string; childre
         </TerminalProvider>
       </LocalProvider>
     </DataProvider>
-  )
-}
-
-function HomePane(props: { paneId: string; isFocused: () => boolean }) {
-  const multiPane = useMultiPane()
-  const globalSync = useGlobalSync()
-  const hideLogo = createMemo(() => multiPane.panes().length > 1)
-  const showRelativeTime = createMemo(() => multiPane.panes().length <= 1)
-  const [autoSelected, setAutoSelected] = createSignal(false)
-
-  function handleProjectSelected(directory: string) {
-    multiPane.updatePane(props.paneId, { directory, sessionId: undefined })
-    multiPane.setFocused(props.paneId)
-  }
-
-  const mostRecentProject = createMemo(() => {
-    const sorted = globalSync.data.project.toSorted(
-      (a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created),
-    )
-    return sorted[0]?.worktree
-  })
-  const defaultProject = createMemo(() => globalSync.data.path.directory)
-  const preferredProject = createMemo(() => mostRecentProject() || defaultProject())
-
-  createEffect(() => {
-    if (autoSelected()) return
-    if (!props.isFocused()) return
-    const candidate = preferredProject()
-    if (!candidate) return
-    setAutoSelected(true)
-    handleProjectSelected(candidate)
-  })
-
-  function handleNavigateMulti() {
-    multiPane.addPane()
-  }
-
-  function handleMouseDown(event: MouseEvent) {
-    const target = event.target as HTMLElement
-    const isInteractive = target.closest('button, input, select, textarea, [contenteditable], [role="button"]')
-    if (!isInteractive) {
-      multiPane.setFocused(props.paneId)
-    }
-  }
-
-  return (
-    <div class="relative size-full flex flex-col overflow-hidden transition-colors duration-150" onMouseDown={handleMouseDown}>
-      <div
-        class="pointer-events-none absolute inset-0 z-30 border"
-        classList={{
-          "border-border-accent-base": props.isFocused(),
-          "border-border-strong-base": !props.isFocused(),
-        }}
-      />
-      <HomeScreen
-        hideLogo={hideLogo()}
-        showRelativeTime={showRelativeTime()}
-        showThemePicker={multiPane.panes().length === 1}
-        onProjectSelected={handleProjectSelected}
-        onNavigateMulti={handleNavigateMulti}
-      />
-    </div>
   )
 }
 
@@ -235,26 +173,8 @@ function MultiPaneContent() {
     if (!id) return undefined
     return multiPane.panes().find((pane) => pane.id === id)
   })
-  const activeTitle = createMemo(() => {
-    const pane = activePane()
-    if (!pane) return undefined
-    const sessionId = pane.sessionId
-    if (!sessionId) return "New session"
-    const directory = pane.directory
-    if (!directory) return "New session"
-    const child = globalSync.child(directory)
-    const store = child[0]
-    const session = store.session.find((candidate) => candidate.id === sessionId)
-    if (session?.title) return session.title
-    return sessionId
-  })
-  const activeProject = createMemo(() => {
-    const pane = activePane()
-    if (!pane) return undefined
-    const directory = pane.directory
-    if (!directory) return undefined
-    return truncateDirectoryPrefix(directory)
-  })
+  const activeTitle = createMemo(() => getPaneTitle(activePane(), globalSync))
+  const activeProject = createMemo(() => getPaneProjectLabel(activePane()))
 
   const recentProject = createMemo(() => {
     const sorted = globalSync.data.project.toSorted(
@@ -405,34 +325,39 @@ function MultiPaneContent() {
                     panes={visiblePanes()}
                     renderPane={(pane) => {
                       const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+                      const state = createMemo(() => getPaneState(pane))
                       return (
                         <Show
-                          when={pane.directory}
-                          fallback={<HomePane paneId={pane.id} isFocused={isFocused} />}
+                          when={state() === "session"}
+                          fallback={
+                            <PaneHome
+                              paneId={pane.id}
+                              isFocused={isFocused}
+                              selectedProject={pane.directory}
+                            />
+                          }
                         >
-                          {(directory) => (
-                            <SDKProvider directory={directory()!}>
-                              <SyncProvider>
-                                <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
-                                  <SessionPane
-                                    mode="multi"
-                                    paneId={pane.id}
-                                    directory={directory()!}
-                                    sessionId={pane.sessionId}
-                                    isFocused={isFocused}
-                                    reviewMode="global"
-                                    onSessionChange={(sessionId: string | undefined) =>
-                                      multiPane.updatePane(pane.id, { sessionId })
-                                    }
-                                    onDirectoryChange={(dir: string) =>
-                                      multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })
-                                    }
-                                    onClose={() => multiPane.removePane(pane.id)}
-                                  />
-                                </PaneSyncedProviders>
-                              </SyncProvider>
-                            </SDKProvider>
-                          )}
+                          <SDKProvider directory={pane.directory!}>
+                            <SyncProvider>
+                              <PaneSyncedProviders paneId={pane.id} directory={pane.directory!}>
+                                <SessionPane
+                                  mode="multi"
+                                  paneId={pane.id}
+                                  directory={pane.directory!}
+                                  sessionId={pane.sessionId!}
+                                  isFocused={isFocused}
+                                  reviewMode="global"
+                                  onSessionChange={(sessionId: string | undefined) =>
+                                    multiPane.updatePane(pane.id, { sessionId })
+                                  }
+                                  onDirectoryChange={(dir: string) =>
+                                    multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })
+                                  }
+                                  onClose={() => multiPane.removePane(pane.id)}
+                                />
+                              </PaneSyncedProviders>
+                            </SyncProvider>
+                          </SDKProvider>
                         </Show>
                       )
                     }}

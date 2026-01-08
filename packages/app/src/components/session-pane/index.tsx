@@ -25,7 +25,6 @@ import { useHeaderOverlay } from "@/hooks/use-header-overlay"
 import { useSessionMessages } from "@/hooks/use-session-messages"
 import { useSessionSync } from "@/hooks/use-session-sync"
 import { useSessionCommands } from "@/hooks/use-session-commands"
-import { HomeScreen } from "@/components/home-screen"
 import { ThemeDropup } from "@/components/theme-dropup"
 import { SessionPaneHeader } from "./header"
 import { ReviewPanel } from "./review-panel"
@@ -246,23 +245,7 @@ export function SessionPane(props: SessionPaneProps) {
       (diffs().length > 0 || tabs().all().length > 0 || contextOpen()),
   )
 
-  const showHomeScreen = createMemo(() => props.mode === "multi" && !sessionId())
-  const hidePaneLogo = createMemo(
-    () => props.mode === "multi" && !!multiPane && multiPane.panes().length > 1,
-  )
-  const showRelativeTime = createMemo(() => {
-    if (!multiPane) return true
-    return multiPane.panes().length <= 1
-  })
   const sessionTurnPadding = createMemo(() => (props.mode === "single" ? "pb-20" : "pb-0"))
-
-  function handleProjectSelect(directory: string) {
-    if (props.mode !== "multi") return
-    props.onDirectoryChange?.(directory)
-    if (multiPane && props.paneId) {
-      multiPane.setFocused(props.paneId)
-    }
-  }
 
   // New session view
   const NewSessionView = () => (
@@ -426,71 +409,57 @@ export function SessionPane(props: SessionPaneProps) {
         </div>
       </Show>
 
-      <Show
-        when={showHomeScreen()}
-        fallback={
-          <div class="flex-1 min-h-0 flex flex-col">
-            {/* Mobile view */}
-            <MobileView
-              sessionId={sessionId()}
-              visibleUserMessages={sessionMessages.visibleUserMessages}
-              lastUserMessage={sessionMessages.lastUserMessage}
-              diffs={diffs}
-              working={working}
-              onUserInteracted={() => setStore("userInteracted", true)}
-              newSessionView={NewSessionView}
-            />
-
-            {/* Desktop view */}
-            <div class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}>
-              <div
-                class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full"
-                style={{
-                  width: showTabs() ? `${layout.session.width()}px` : "100%",
-                }}
-                classList={{
-                  "bg-background-stronger": props.mode === "single",
-                }}
-              >
-                <div class="flex-1 min-h-0 overflow-hidden">
-                  <DesktopSessionContent />
-                </div>
-                <Show when={showTabs()}>
-                  <ResizeHandle
-                    direction="horizontal"
-                    size={layout.session.width()}
-                    min={450}
-                    max={window.innerWidth * 0.45}
-                    onResize={layout.session.resize}
-                  />
-                </Show>
-              </div>
-
-              {/* Review panel */}
-              <Show when={showTabs()}>
-                <ReviewPanel
-                  sessionKey={sessionKey()}
-                  sessionId={sessionId()}
-                  diffs={diffs()}
-                  sessionInfo={info()}
-                  activeDraggable={store.activeDraggable}
-                  onDragStart={(id) => setStore("activeDraggable", id)}
-                  onDragEnd={() => setStore("activeDraggable", undefined)}
-                />
-              </Show>
-            </div>
-          </div>
-        }
-      >
-        <HomeScreen
-          selectedProject={expectedDirectory() || undefined}
-          hideLogo={hidePaneLogo()}
-          showRelativeTime={showRelativeTime()}
-          showThemePicker={multiPane ? multiPane.panes().length === 1 : true}
-          onProjectSelected={handleProjectSelect}
-          onNavigateMulti={() => multiPane?.addPane()}
+      <div class="flex-1 min-h-0 flex flex-col">
+        {/* Mobile view */}
+        <MobileView
+          sessionId={sessionId()}
+          visibleUserMessages={sessionMessages.visibleUserMessages}
+          lastUserMessage={sessionMessages.lastUserMessage}
+          diffs={diffs}
+          working={working}
+          onUserInteracted={() => setStore("userInteracted", true)}
+          newSessionView={NewSessionView}
         />
-      </Show>
+
+        {/* Desktop view */}
+        <div class={props.mode === "single" ? "hidden md:flex min-h-0 grow w-full" : "flex-1 min-h-0 flex"}>
+          <div
+            class="@container relative shrink-0 py-3 flex flex-col gap-6 min-h-0 h-full"
+            style={{
+              width: showTabs() ? `${layout.session.width()}px` : "100%",
+            }}
+            classList={{
+              "bg-background-stronger": props.mode === "single",
+            }}
+          >
+            <div class="flex-1 min-h-0 overflow-hidden">
+              <DesktopSessionContent />
+            </div>
+            <Show when={showTabs()}>
+              <ResizeHandle
+                direction="horizontal"
+                size={layout.session.width()}
+                min={450}
+                max={window.innerWidth * 0.45}
+                onResize={layout.session.resize}
+              />
+            </Show>
+          </div>
+
+          {/* Review panel */}
+          <Show when={showTabs()}>
+            <ReviewPanel
+              sessionKey={sessionKey()}
+              sessionId={sessionId()}
+              diffs={diffs()}
+              sessionInfo={info()}
+              activeDraggable={store.activeDraggable}
+              onDragStart={(id) => setStore("activeDraggable", id)}
+              onDragEnd={() => setStore("activeDraggable", undefined)}
+            />
+          </Show>
+        </div>
+      </div>
     </div>
   )
 }

@@ -428,11 +428,9 @@ export function PaneGrid(props: PaneGridProps) {
     const max = maximizedPaneId()
     if (!max) return base
     if (id !== max) return base
-    const current = base ? { ...base } : {}
     return {
-      ...current,
-      "grid-column": "1 / -1",
-      "grid-row": "1 / -1",
+      position: "absolute",
+      inset: "0",
       "z-index": "20",
     }
   }
