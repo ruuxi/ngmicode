@@ -14,11 +14,19 @@ export type PaneLayout = {
   rows: number
 }
 
+type PaneGridState = {
+  columns: number
+  rows: number
+  colSizes?: number[]
+  rowSizes?: number[]
+}
+
 type MultiPaneState = {
   panes: PaneConfig[]
   currentPage: number
   focusedPaneId?: string
   maximizedPaneId?: string
+  grid: Record<number, PaneGridState | undefined>
 }
 
 const MAX_PANES_PER_PAGE = 12
@@ -46,6 +54,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       currentPage: 0,
       focusedPaneId: undefined,
       maximizedPaneId: undefined,
+      grid: {},
     })
 
     const totalPages = createMemo(() => Math.max(1, Math.ceil(store.panes.length / MAX_PANES_PER_PAGE)))
@@ -72,6 +81,43 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       focusedPaneId: createMemo(() => store.focusedPaneId),
       focusedPane,
       maximizedPaneId: createMemo(() => store.maximizedPaneId),
+      grid: {
+        get(page: number, nextLayout: PaneLayout) {
+          const entry = store.grid[page]
+          if (!entry) return {}
+          if (entry.columns !== nextLayout.columns) return {}
+          if (entry.rows !== nextLayout.rows) return {}
+          return { colSizes: entry.colSizes, rowSizes: entry.rowSizes }
+        },
+        set(page: number, nextLayout: PaneLayout, next: { colSizes?: number[]; rowSizes?: number[] }) {
+          const entry = store.grid[page]
+          if (!entry) {
+            setStore("grid", page, {
+              columns: nextLayout.columns,
+              rows: nextLayout.rows,
+              colSizes: next.colSizes,
+              rowSizes: next.rowSizes,
+            })
+            return
+          }
+
+          if (entry.columns !== nextLayout.columns || entry.rows !== nextLayout.rows) {
+            setStore("grid", page, {
+              columns: nextLayout.columns,
+              rows: nextLayout.rows,
+              colSizes: next.colSizes,
+              rowSizes: next.rowSizes,
+            })
+            return
+          }
+
+          if (next.colSizes) setStore("grid", page, "colSizes", next.colSizes)
+          if (next.rowSizes) setStore("grid", page, "rowSizes", next.rowSizes)
+        },
+        clear() {
+          setStore("grid", {})
+        },
+      },
 
       addPane(directory?: string, sessionId?: string, options?: { focus?: boolean }) {
         if (store.panes.length >= MAX_TOTAL_PANES) {
@@ -207,6 +253,7 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
           setStore("currentPage", 0)
           setStore("focusedPaneId", undefined)
           setStore("maximizedPaneId", undefined)
+          setStore("grid", {})
         })
       },
 
@@ -242,12 +289,12 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
       toggleMaximize(id: string) {
         if (store.maximizedPaneId === id) {
           setStore("maximizedPaneId", undefined)
-        } else {
-          batch(() => {
-            setStore("maximizedPaneId", id)
-            setStore("focusedPaneId", id)
-          })
+          return
         }
+        batch(() => {
+          setStore("maximizedPaneId", id)
+          setStore("focusedPaneId", id)
+        })
       },
     }
   },

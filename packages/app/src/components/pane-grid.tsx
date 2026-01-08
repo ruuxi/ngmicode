@@ -4,13 +4,12 @@ import { useMultiPane, type PaneConfig } from "@/context/multi-pane"
 import { useRadialDial } from "@/hooks/use-radial-dial"
 import { RadialDialMenu } from "@opencode-ai/ui/radial-dial-menu"
 
-const MAX_GRID_COLS = 4
-const MAX_GRID_ROWS = 3
-const MIN_COL_FRACTION = 1 / MAX_GRID_COLS
-const MIN_ROW_FRACTION = 1 / MAX_GRID_ROWS
 const FLIP_DURATION = 200
 const GRID_GAP = 6
 const CORNER_HIT_SIZE = 10
+const MIN_PANE_WIDTH = 240
+const MIN_PANE_HEIGHT = 180
+const MIN_TRACK_SLACK = 0.1
 
 type PaneGridProps = ParentProps<{
   panes: PaneConfig[]
@@ -165,36 +164,61 @@ export function PaneGrid(props: PaneGridProps) {
   const [colSizes, setColSizes] = createSignal<number[] | null>(null)
   const [rowSizes, setRowSizes] = createSignal<number[] | null>(null)
 
-  function buildSizes(
+  createEffect(() => {
+    const page = multiPane.currentPage()
+    const nextLayout = layout()
+    const saved = untrack(() => multiPane.grid.get(page, nextLayout))
+    setColSizes(saved.colSizes ?? null)
+    setRowSizes(saved.rowSizes ?? null)
+  })
+
+  function sum(values: number[]) {
+    return values.reduce((a, b) => a + b, 0)
+  }
+
+  function minTrackPx(count: number, containerSize: number, baseMin: number) {
+    const safeCount = Math.max(count, 1)
+    const totalGapSpace = (safeCount - 1) * GRID_GAP
+    const availableSpace = Math.max(containerSize - totalGapSpace, 1)
+    const usableSpace = Math.max(availableSpace * (1 - MIN_TRACK_SLACK), 1)
+    return Math.min(baseMin, usableSpace / safeCount)
+  }
+
+  function handleCenterPx(count: number, sizes: number[], index: number, containerSize: number) {
+    const totalGapSpace = (count - 1) * GRID_GAP
+    const availableSpace = Math.max(containerSize - totalGapSpace, 1)
+    const totalFr = sum(sizes)
+    const beforeFr = sum(sizes.slice(0, index + 1))
+    const fraction = beforeFr / totalFr
+    return availableSpace * fraction + index * GRID_GAP + GRID_GAP / 2
+  }
+
+  function resizeAdjacent(
     count: number,
     startSizes: number[],
     index: number,
-    cursorPos: number,
+    handlePos: number,
     containerSize: number,
-    minFraction: number,
+    minPx: number,
   ) {
     const totalGapSpace = (count - 1) * GRID_GAP
-    const availableSpace = containerSize - totalGapSpace
-    const safeSpace = Math.max(availableSpace, 1)
-    const gapsBefore = index * GRID_GAP
-    const contentPosBefore = cursorPos - gapsBefore - GRID_GAP / 2
-    const totalFr = startSizes.reduce((a, b) => a + b, 0)
-    const minFr = minFraction * totalFr
-    const unclampedBefore = (contentPosBefore / safeSpace) * totalFr
-    const beforeFr = Math.min(Math.max(unclampedBefore, minFr), totalFr - minFr)
-    const afterFr = totalFr - beforeFr
-    const newSizes = [...startSizes]
-    const sumBefore = startSizes.slice(0, index + 1).reduce((a, b) => a + b, 0)
-    const sumAfter = startSizes.slice(index + 1).reduce((a, b) => a + b, 0)
+    const availableSpace = Math.max(containerSize - totalGapSpace, 1)
+    const totalFr = sum(startSizes)
+    const startPx = startSizes.map((s) => (s / totalFr) * availableSpace)
+    const beforePx = sum(startPx.slice(0, index))
+    const afterPx = sum(startPx.slice(index + 2))
+    const pairSpace = availableSpace - beforePx - afterPx
+    if (pairSpace <= 1) return startSizes
 
-    Array.from({ length: index + 1 }, (_, i) => i).forEach((i) => {
-      newSizes[i] = (startSizes[i] / sumBefore) * beforeFr
-    })
-    Array.from({ length: count - index - 1 }, (_, offset) => offset + index + 1).forEach((i) => {
-      newSizes[i] = (startSizes[i] / sumAfter) * afterFr
-    })
-
-    return newSizes
+    const contentPosBefore = handlePos - index * GRID_GAP - GRID_GAP / 2
+    const desiredLeft = contentPosBefore - beforePx
+    const minPairPx = Math.min(minPx, pairSpace / 2)
+    const leftPx = Math.min(Math.max(desiredLeft, minPairPx), pairSpace - minPairPx)
+    const rightPx = pairSpace - leftPx
+    const nextSizes = [...startSizes]
+    nextSizes[index] = (leftPx / availableSpace) * totalFr
+    nextSizes[index + 1] = (rightPx / availableSpace) * totalFr
+    return nextSizes
   }
 
   // Use fr units for proper gap handling
@@ -217,12 +241,21 @@ export function PaneGrid(props: PaneGridProps) {
   })
 
   function handleResizeStart(type: "col" | "row", index: number, e: MouseEvent) {
+    if (e.button !== 0) return
     e.preventDefault()
+    e.stopPropagation()
     const count = type === "col" ? layout().columns : layout().rows
 
     // Initialize sizes if not set
     const currentSizes = type === "col" ? colSizes() : rowSizes()
-    const startSizes = currentSizes ?? Array(count).fill(1)
+    const startSizes = currentSizes && currentSizes.length === count ? currentSizes : Array(count).fill(1)
+
+    const startRect = containerRef?.getBoundingClientRect()
+    if (!startRect) return
+    const startContainerSize = type === "col" ? startRect.width : startRect.height
+    const startCursorPos = type === "col" ? e.clientX - startRect.left : e.clientY - startRect.top
+    const startHandlePos = handleCenterPx(count, startSizes, index, startContainerSize)
+    const cursorOffset = startCursorPos - startHandlePos
 
     document.body.style.userSelect = "none"
     document.body.style.cursor = type === "col" ? "col-resize" : "row-resize"
@@ -233,8 +266,9 @@ export function PaneGrid(props: PaneGridProps) {
       const rect = containerRef.getBoundingClientRect()
       const containerSize = type === "col" ? rect.width : rect.height
       const cursorPos = type === "col" ? moveEvent.clientX - rect.left : moveEvent.clientY - rect.top
-      const minFraction = type === "col" ? MIN_COL_FRACTION : MIN_ROW_FRACTION
-      const newSizes = buildSizes(count, startSizes, index, cursorPos, containerSize, minFraction)
+      const handlePos = cursorPos - cursorOffset
+      const minPx = type === "col" ? minTrackPx(count, containerSize, MIN_PANE_WIDTH) : minTrackPx(count, containerSize, MIN_PANE_HEIGHT)
+      const newSizes = resizeAdjacent(count, startSizes, index, handlePos, containerSize, minPx)
 
       if (type === "col") {
         setColSizes(newSizes)
@@ -248,6 +282,16 @@ export function PaneGrid(props: PaneGridProps) {
       document.body.style.cursor = ""
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
+      const page = multiPane.currentPage()
+      const nextLayout = layout()
+      if (type === "col") {
+        const sizes = colSizes()
+        if (sizes && sizes.length === nextLayout.columns) multiPane.grid.set(page, nextLayout, { colSizes: sizes })
+        resizeCleanup = null
+        return
+      }
+      const sizes = rowSizes()
+      if (sizes && sizes.length === nextLayout.rows) multiPane.grid.set(page, nextLayout, { rowSizes: sizes })
       resizeCleanup = null
     }
 
@@ -261,10 +305,22 @@ export function PaneGrid(props: PaneGridProps) {
   function handleCornerResizeStart(colIndex: number, rowIndex: number, e: MouseEvent) {
     if (e.button !== 0) return
     e.preventDefault()
+    e.stopPropagation()
     const cols = layout().columns
     const rows = layout().rows
-    const startCols = colSizes() ?? Array(cols).fill(1)
-    const startRows = rowSizes() ?? Array(rows).fill(1)
+    const currentCols = colSizes()
+    const currentRows = rowSizes()
+    const startCols = currentCols && currentCols.length === cols ? currentCols : Array(cols).fill(1)
+    const startRows = currentRows && currentRows.length === rows ? currentRows : Array(rows).fill(1)
+
+    const startRect = containerRef?.getBoundingClientRect()
+    if (!startRect) return
+    const startColPos = e.clientX - startRect.left
+    const startRowPos = e.clientY - startRect.top
+    const startHandleX = handleCenterPx(cols, startCols, colIndex, startRect.width)
+    const startHandleY = handleCenterPx(rows, startRows, rowIndex, startRect.height)
+    const cursorOffsetX = startColPos - startHandleX
+    const cursorOffsetY = startRowPos - startHandleY
 
     document.body.style.userSelect = "none"
     document.body.style.cursor = "nwse-resize"
@@ -275,8 +331,12 @@ export function PaneGrid(props: PaneGridProps) {
       const rect = containerRef.getBoundingClientRect()
       const colPos = moveEvent.clientX - rect.left
       const rowPos = moveEvent.clientY - rect.top
-      const newCols = buildSizes(cols, startCols, colIndex, colPos, rect.width, MIN_COL_FRACTION)
-      const newRows = buildSizes(rows, startRows, rowIndex, rowPos, rect.height, MIN_ROW_FRACTION)
+      const handleX = colPos - cursorOffsetX
+      const handleY = rowPos - cursorOffsetY
+      const minColPx = minTrackPx(cols, rect.width, MIN_PANE_WIDTH)
+      const minRowPx = minTrackPx(rows, rect.height, MIN_PANE_HEIGHT)
+      const newCols = resizeAdjacent(cols, startCols, colIndex, handleX, rect.width, minColPx)
+      const newRows = resizeAdjacent(rows, startRows, rowIndex, handleY, rect.height, minRowPx)
 
       setColSizes(newCols)
       setRowSizes(newRows)
@@ -287,6 +347,13 @@ export function PaneGrid(props: PaneGridProps) {
       document.body.style.cursor = ""
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
+      const page = multiPane.currentPage()
+      const nextLayout = layout()
+      const nextCols = colSizes()
+      const nextRows = rowSizes()
+      if (nextCols && nextCols.length === cols && nextRows && nextRows.length === rows && nextLayout.columns === cols && nextLayout.rows === rows) {
+        multiPane.grid.set(page, nextLayout, { colSizes: nextCols, rowSizes: nextRows })
+      }
       resizeCleanup = null
     }
 
@@ -296,22 +363,6 @@ export function PaneGrid(props: PaneGridProps) {
     document.addEventListener("mousemove", onMouseMove)
     document.addEventListener("mouseup", onMouseUp)
   }
-
-  // Reset custom sizes when layout changes
-  let prevCols = layout().columns
-  let prevRows = layout().rows
-  createEffect(() => {
-    const cols = layout().columns
-    const rows = layout().rows
-    if (cols !== prevCols) {
-      setColSizes(null)
-      prevCols = cols
-    }
-    if (rows !== prevRows) {
-      setRowSizes(null)
-      prevRows = rows
-    }
-  })
 
   const colPositions = createMemo(() => {
     const cols = layout().columns
