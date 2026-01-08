@@ -19,23 +19,51 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     type SetState = ReturnType<typeof child>[1]
 
-    const mergeMessages = (setTarget: SetState, sessionID: string, items: Message[]) => {
-      if (items.length === 0) return
+    const mergeMessages = (
+      setTarget: SetState,
+      sessionID: string,
+      items: Message[],
+      options?: { prune?: boolean },
+    ) => {
+      const prune = options?.prune ?? false
+      if (!prune) {
+        if (items.length === 0) return
+        setTarget(
+          produce((draft) => {
+            const current = draft.message[sessionID]
+            if (!current) {
+              draft.message[sessionID] = items.slice()
+              return
+            }
+            for (const item of items) {
+              const result = Binary.search(current, item.id, (m) => m.id)
+              if (result.found) {
+                current[result.index] = item
+                continue
+              }
+              current.splice(result.index, 0, item)
+            }
+          }),
+        )
+        return
+      }
       setTarget(
         produce((draft) => {
+          if (items.length === 0) {
+            draft.message[sessionID] = []
+            return
+          }
           const current = draft.message[sessionID]
           if (!current) {
             draft.message[sessionID] = items.slice()
             return
           }
-          for (const item of items) {
-            const result = Binary.search(current, item.id, (m) => m.id)
-            if (result.found) {
-              current[result.index] = item
-              continue
-            }
-            current.splice(result.index, 0, item)
-          }
+          const firstResult = Binary.search(current, items[0].id, (m) => m.id)
+          const lastResult = Binary.search(current, items[items.length - 1].id, (m) => m.id)
+          const prefix = current.slice(0, firstResult.index)
+          const tailIndex = lastResult.index + (lastResult.found ? 1 : 0)
+          const suffix = current.slice(tailIndex)
+          draft.message[sessionID] = [...prefix, ...items, ...suffix]
         }),
       )
     }
@@ -140,7 +168,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               .slice()
               .sort((a, b) => a.id.localeCompare(b.id))
 
-            mergeMessages(localSetStore, sessionID, serverMessages)
+            mergeMessages(localSetStore, sessionID, serverMessages, { prune: true })
 
             for (const message of messages.data ?? []) {
               if (!message?.info?.id) continue
