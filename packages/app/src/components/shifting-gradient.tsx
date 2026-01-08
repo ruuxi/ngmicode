@@ -72,26 +72,44 @@ function parseColor(value: string): RGB | null {
   return parseRgb(value)
 }
 
-function readPalette(mode: "light" | "dark"): RGB[] {
+function readPalette(mode: "light" | "dark", relative = false): RGB[] {
   const root = getComputedStyle(document.documentElement)
-  const tokens = [
-    "--text-interactive-base",
-    "--surface-info-strong",
-    "--surface-success-strong",
-    "--surface-warning-strong",
-    "--surface-brand-base",
-  ]
   const fallback = parseColor(root.getPropertyValue("--text-strong")) ?? { r: 120, g: 120, b: 120 }
   const base = parseColor(root.getPropertyValue("--background-base")) ?? fallback
-  const strength = mode === "dark" ? 0.48 : 0.68
 
-  return tokens.map((token) => {
-    const color = parseColor(root.getPropertyValue(token)) ?? fallback
-    return mixRgb(base, color, strength)
-  })
+  if (relative) {
+    // Relative: subtle colors blended heavily with background
+    const tokens = [
+      "--text-interactive-base",
+      "--surface-info-strong",
+      "--surface-success-strong",
+      "--surface-warning-strong",
+      "--surface-brand-base",
+    ]
+    const strength = mode === "dark" ? 0.22 : 0.28
+    return tokens.map((token) => {
+      const color = parseColor(root.getPropertyValue(token)) ?? fallback
+      return mixRgb(base, color, strength)
+    })
+  }
+
+  // Strong: use theme's accent/brand colors at high saturation
+  const brandColor = parseColor(root.getPropertyValue("--surface-brand-base")) ?? fallback
+  const accentColor = parseColor(root.getPropertyValue("--text-accent-base"))
+    ?? parseColor(root.getPropertyValue("--text-interactive-base"))
+    ?? brandColor
+  const strength = mode === "dark" ? 0.78 : 0.88
+
+  return [
+    mixRgb(base, brandColor, strength),
+    mixRgb(base, accentColor, strength),
+    mixRgb(base, brandColor, strength * 0.85),
+    mixRgb(base, accentColor, strength * 0.9),
+    mixRgb(base, brandColor, strength * 0.95),
+  ]
 }
 
-function blobs(colors: RGB[]): Blob[] {
+function blobs(colors: RGB[], crisp = false): Blob[] {
   const list: Blob[] = []
   const base = [
     { x: 16, y: 14, color: colors[0] },
@@ -101,6 +119,8 @@ function blobs(colors: RGB[]): Blob[] {
     { x: 52, y: 54, color: colors[4] },
   ]
 
+  const blurRange = crisp ? { min: 20, max: 40 } : { min: 120, max: 200 }
+
   for (const b of base) {
     const size = Math.round(rand(820, 1280))
     list.push({
@@ -108,7 +128,7 @@ function blobs(colors: RGB[]): Blob[] {
       y: rand(b.y - 14, b.y + 14),
       size,
       scale: rand(0.9, 1.15),
-      blur: Math.round(rand(120, 200)),
+      blur: Math.round(rand(blurRange.min, blurRange.max)),
       alpha: rand(0.78, 0.95),
       color: b.color,
     })
@@ -128,20 +148,23 @@ export function ShiftingGradient(props: { class?: string }) {
     palette: [] as RGB[],
   })
 
+  const isCrisp = () => theme.gradientMode() === "crisp"
+  const isRelative = () => theme.gradientColor() === "relative"
+
   onMount(() => {
-    const palette = readPalette(theme.mode())
+    const palette = readPalette(theme.mode(), isRelative())
     setStore("palette", palette)
-    setStore("blobs", blobs(palette))
+    setStore("blobs", blobs(palette, isCrisp()))
     requestAnimationFrame(() => setStore("ready", true))
   })
 
   createEffect(
     on(
-      () => [theme.themeId(), theme.mode()],
+      () => [theme.themeId(), theme.mode(), theme.gradientMode(), theme.gradientColor()],
       () => {
-        const palette = readPalette(theme.mode())
+        const palette = readPalette(theme.mode(), isRelative())
         setStore("palette", palette)
-        setStore("blobs", blobs(palette))
+        setStore("blobs", blobs(palette, isCrisp()))
       },
       { defer: true },
     ),
@@ -151,8 +174,8 @@ export function ShiftingGradient(props: { class?: string }) {
     on(
       () => trigger(),
       () => {
-        const palette = store.palette.length > 0 ? store.palette : readPalette(theme.mode())
-        setStore("blobs", blobs(palette))
+        const palette = store.palette.length > 0 ? store.palette : readPalette(theme.mode(), isRelative())
+        setStore("blobs", blobs(palette, isCrisp()))
       },
       { defer: true },
     ),

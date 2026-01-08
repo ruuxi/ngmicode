@@ -452,7 +452,7 @@ export function PaneGrid(props: PaneGridProps) {
       position: "absolute",
       inset: "0",
       "z-index": "20",
-    }
+    } as const
   }
 
   return (
