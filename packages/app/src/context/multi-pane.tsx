@@ -125,7 +125,20 @@ export const { use: useMultiPane, provider: MultiPaneProvider } = createSimpleCo
         }
         const id = generatePaneId()
         const pane: PaneConfig = { id, directory, sessionId }
-        setStore("panes", [...store.panes, pane])
+
+        const total = store.panes.length
+        const targetPage = Math.floor(total / MAX_PANES_PER_PAGE)
+        const pageStart = targetPage * MAX_PANES_PER_PAGE
+        const visibleCount = total - pageStart
+        const prevLayout = calculateLayout(visibleCount)
+        const nextLayout = calculateLayout(visibleCount + 1)
+        const shouldInsertIntoExpansionSlot =
+          visibleCount > 0 && nextLayout.rows === prevLayout.rows && nextLayout.columns > prevLayout.columns
+        const localInsertIndex = shouldInsertIntoExpansionSlot ? Math.min(prevLayout.columns, visibleCount) : visibleCount
+
+        const nextPanes = [...store.panes]
+        nextPanes.splice(pageStart + localInsertIndex, 0, pane)
+        setStore("panes", nextPanes)
         const shouldFocus = options?.focus ?? true
         if (shouldFocus) {
           setStore("focusedPaneId", id)
