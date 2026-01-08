@@ -38,6 +38,7 @@ type SessionView = {
 export type LocalProject = Partial<Project> & { worktree: string; expanded: boolean }
 
 export type ReviewDiffStyle = "unified" | "split"
+export type MultiPaneView = "grid" | "kanban"
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
@@ -62,6 +63,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         session: {
           width: 600,
+        },
+        multiPane: {
+          view: "grid" as MultiPaneView,
         },
         mobileSidebar: {
           opened: false,
@@ -329,6 +333,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             return
           }
           setStore("session", "width", width)
+        },
+      },
+      multiPane: {
+        view: createMemo(() => store.multiPane?.view ?? "grid"),
+        setView(view: MultiPaneView) {
+          if (!store.multiPane) {
+            setStore("multiPane", { view })
+            return
+          }
+          setStore("multiPane", "view", view)
         },
       },
 

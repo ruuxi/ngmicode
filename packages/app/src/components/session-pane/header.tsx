@@ -20,7 +20,7 @@ import { SessionLspIndicator } from "@/components/session-lsp-indicator"
 import { SessionMcpIndicator } from "@/components/session-mcp-indicator"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { truncateDirectoryPrefix, getFilename } from "@opencode-ai/util/path"
-import { paneCache } from "@/pages/multi-pane"
+import { paneCache } from "@/components/multi-pane/pane-cache"
 import { iife } from "@opencode-ai/util/iife"
 import type { Session } from "@opencode-ai/sdk/v2/client"
 

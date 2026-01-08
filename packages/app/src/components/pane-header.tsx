@@ -6,7 +6,7 @@ import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useMultiPane } from "@/context/multi-pane"
-import { paneCache } from "@/pages/multi-pane"
+import { paneCache } from "@/components/multi-pane/pane-cache"
 import { getFilename, truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import type { Session } from "@opencode-ai/sdk/v2/client"
 

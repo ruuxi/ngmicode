@@ -1369,6 +1369,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             model,
             command: text,
           })
+          .then((response) => {
+            const data = response.data
+            if (!data) return
+            sync.session.mergeMessage({ info: data })
+            sync.session.sync(existing.id).catch((err) => {
+              console.error("Failed to sync session", err)
+            })
+          })
           .catch((e) => {
             console.error("Failed to send shell command", e)
             showToast({
@@ -1393,6 +1401,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               agent,
               model: `${model.providerID}/${model.modelID}`,
               variant,
+            })
+            .then((response) => {
+              const data = response.data
+              if (!data) return
+              sync.session.mergeMessage({ info: data.info, parts: data.parts ?? [] })
             })
             .catch((e) => {
               console.error("Failed to send command", e)
@@ -1443,6 +1456,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           variant,
           thinking,
           claudeCodeFlow,
+        })
+        .then((response) => {
+          const data = response.data
+          if (!data) return
+          sync.session.mergeMessage({ info: data.info, parts: data.parts ?? [] })
         })
         .catch((e) => {
           console.error("Failed to send prompt", e)

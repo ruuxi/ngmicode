@@ -1043,6 +1043,27 @@ export default function Layout(props: ParentProps) {
               </Button>
             </TooltipKeybind>
           </Show>
+          <Show when={!sidebarProps.mobile}>
+            <div
+              class="shrink-0 w-full flex gap-1 px-1"
+              classList={{ "flex-row": expanded(), "flex-col": !expanded(), "items-center": true }}
+            >
+              <Tooltip placement="right" value="Grid layout" inactive={expanded()}>
+                <IconButton
+                  icon="dot-grid"
+                  variant={layout.multiPane.view() === "grid" ? "secondary" : "ghost"}
+                  onClick={() => layout.multiPane.setView("grid")}
+                />
+              </Tooltip>
+              <Tooltip placement="right" value="Kanban layout" inactive={expanded()}>
+                <IconButton
+                  icon="bullet-list"
+                  variant={layout.multiPane.view() === "kanban" ? "secondary" : "ghost"}
+                  onClick={() => layout.multiPane.setView("kanban")}
+                />
+              </Tooltip>
+            </div>
+          </Show>
           <DragDropProvider
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}

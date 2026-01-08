@@ -1,4 +1,4 @@
-import { Show, createMemo, onMount, createEffect, on, For, onCleanup, createSignal } from "solid-js"
+import { Show, createMemo, onMount, createEffect, on, createSignal } from "solid-js"
 import { useSearchParams } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
@@ -11,33 +11,18 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
-import { LocalProvider, useLocal } from "@/context/local"
+import { LocalProvider } from "@/context/local"
 import { DataProvider } from "@opencode-ai/ui/context"
-import { TerminalProvider, useTerminal, type LocalPTY } from "@/context/terminal"
-import { PromptProvider, usePrompt, type Prompt } from "@/context/prompt"
+import { TerminalProvider } from "@/context/terminal"
+import { PromptProvider } from "@/context/prompt"
 import { FileProvider } from "@/context/file"
-import { PromptInput } from "@/components/prompt-input"
-import { Terminal } from "@/components/terminal"
-import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
-import { Tabs } from "@opencode-ai/ui/tabs"
-import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { DragDropProvider, DragDropSensors, DragOverlay, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { truncateDirectoryPrefix } from "@opencode-ai/util/path"
 import { getDraggableId } from "@/utils/solid-dnd"
 import { ShiftingGradient, GRAIN_DATA_URI } from "@/components/shifting-gradient"
-
-const MAX_TERMINAL_HEIGHT = 200
-
-// Cache to preserve prompt content and settings when switching between panes
-export type PaneCache = {
-  prompt?: Prompt
-  agent?: string
-  model?: { providerID: string; modelID: string }
-  variant?: string
-}
-export const paneCache = new Map<string, PaneCache>()
+import { MultiPanePromptPanel } from "@/components/multi-pane/prompt-panel"
+import { MultiPaneKanbanView } from "@/components/multi-pane/kanban-view"
 
 // Provider wrapper for each pane (provides Local/Terminal context needed by SessionPane)
 function PaneSyncedProviders(props: { paneId: string; directory: string; children: any }) {
@@ -123,173 +108,6 @@ function HomePane(props: { paneId: string; isFocused: () => boolean }) {
   )
 }
 
-// Inner component that has access to terminal context
-function GlobalTerminalAndPrompt(props: { paneId: string; sessionId?: string }) {
-  const multiPane = useMultiPane()
-  const layout = useLayout()
-  const terminal = useTerminal()
-  const prompt = usePrompt()
-  const local = useLocal()
-  const sdk = useSDK()
-  let editorRef: HTMLDivElement | undefined
-
-  function handleSessionCreated(sessionId: string) {
-    multiPane.updatePane(props.paneId, { sessionId })
-  }
-
-  function restorePaneState(paneId: string) {
-    const cached = paneCache.get(paneId)
-    if (!cached) return
-    if (cached.agent) local.agent.set(cached.agent)
-    if (cached.model) local.model.set(cached.model)
-    if (cached.variant !== undefined) local.model.variant.set(cached.variant)
-    if (cached.prompt && !prompt.dirty()) prompt.set(cached.prompt)
-  }
-
-  type PaneSnapshot = {
-    prompt?: Prompt
-    promptDirty: boolean
-    agent?: string
-    model?: { providerID: string; modelID: string }
-    variant?: string
-  }
-
-  const paneSnapshots = new Map<string, PaneSnapshot>()
-
-  function snapshotPaneState(): PaneSnapshot {
-    const currentPrompt = prompt.current()
-    const currentAgent = local.agent.current()
-    const currentModel = local.model.current()
-    return {
-      prompt: currentPrompt,
-      promptDirty: prompt.dirty(),
-      agent: currentAgent?.name,
-      model: currentModel ? { providerID: currentModel.provider.id, modelID: currentModel.id } : undefined,
-      variant: local.model.variant.current(),
-    }
-  }
-
-  function storePaneState(paneId: string, snapshot?: PaneSnapshot) {
-    const state = snapshot ?? snapshotPaneState()
-    const cache: PaneCache = paneCache.get(paneId) ?? {}
-    if (state.prompt && state.promptDirty) {
-      cache.prompt = state.prompt
-    }
-    if (state.agent) {
-      cache.agent = state.agent
-    }
-    if (state.model) {
-      cache.model = state.model
-    }
-    cache.variant = state.variant
-    paneCache.set(paneId, cache)
-  }
-
-  restorePaneState(props.paneId)
-
-  createEffect(() => {
-    paneSnapshots.set(props.paneId, snapshotPaneState())
-  })
-
-  createEffect(
-    on(
-      () => props.paneId,
-      (next, prev) => {
-        if (prev) storePaneState(prev, paneSnapshots.get(prev))
-        if (next) restorePaneState(next)
-      },
-      { defer: true },
-    ),
-  )
-
-  // Save all settings to cache on cleanup (before unmount)
-  onCleanup(() => {
-    storePaneState(props.paneId, paneSnapshots.get(props.paneId))
-  })
-
-  // Auto-focus prompt when component mounts
-  onMount(() => {
-    requestAnimationFrame(() => {
-      editorRef?.focus()
-    })
-  })
-
-  createEffect(
-    on(
-      () => [props.paneId, props.sessionId, sdk.directory],
-      () => {
-        requestAnimationFrame(() => {
-          editorRef?.focus()
-        })
-      },
-    ),
-  )
-
-  return (
-    <div class="shrink-0 flex flex-col border-t border-border-weak-base">
-      {/* Terminal section */}
-      <Show when={layout.terminal.opened()}>
-        <div
-          class="relative w-full flex flex-col shrink-0"
-          style={{ height: `${Math.min(layout.terminal.height(), MAX_TERMINAL_HEIGHT)}px` }}
-        >
-          <ResizeHandle
-            direction="vertical"
-            size={Math.min(layout.terminal.height(), MAX_TERMINAL_HEIGHT)}
-            min={80}
-            max={300}
-            collapseThreshold={40}
-            onResize={layout.terminal.resize}
-            onCollapse={layout.terminal.close}
-          />
-          <Tabs variant="alt" value={terminal.active()} onChange={terminal.open}>
-            <Tabs.List class="h-8">
-              <For each={terminal.all()}>
-                {(pty: LocalPTY) => (
-                  <Tabs.Trigger
-                    value={pty.id}
-                    closeButton={
-                      <Tooltip value="Close terminal" placement="bottom">
-                        <IconButton icon="close" variant="ghost" onClick={() => terminal.close(pty.id)} />
-                      </Tooltip>
-                    }
-                  >
-                    {pty.title}
-                  </Tabs.Trigger>
-                )}
-              </For>
-              <div class="h-full flex items-center justify-center">
-                <Tooltip value="New terminal">
-                  <IconButton icon="plus-small" variant="ghost" iconSize="large" onClick={terminal.new} />
-                </Tooltip>
-              </div>
-            </Tabs.List>
-            <For each={terminal.all()}>
-              {(pty: LocalPTY) => (
-                <Tabs.Content value={pty.id}>
-                  <Terminal pty={pty} onCleanup={terminal.update} onConnectError={() => terminal.clone(pty.id)} />
-                </Tabs.Content>
-              )}
-            </For>
-          </Tabs>
-        </div>
-      </Show>
-
-      {/* Prompt input */}
-      <div class="p-3 flex justify-center">
-        <div class="w-full max-w-[800px]">
-          <PromptInput
-            ref={(el) => (editorRef = el)}
-            paneId={props.paneId}
-            sessionId={props.sessionId}
-            onSessionCreated={handleSessionCreated}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Wrapper that provides SDK/Sync context for the global prompt
 function GlobalPromptSynced(props: { paneId: string; directory: string; sessionId?: string }) {
   const sync = useSync()
@@ -303,7 +121,7 @@ function GlobalPromptSynced(props: { paneId: string; directory: string; sessionI
         <TerminalProvider paneId={props.paneId}>
           <FileProvider>
             <PromptProvider paneId={props.paneId}>
-              <GlobalTerminalAndPrompt paneId={props.paneId} sessionId={props.sessionId} />
+              <MultiPanePromptPanel paneId={props.paneId} sessionId={props.sessionId} />
             </PromptProvider>
           </FileProvider>
         </TerminalProvider>
@@ -571,65 +389,75 @@ function MultiPaneContent() {
             </div>
           }
         >
-          <div class="flex-1 min-h-0 flex">
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-              <DragDropProvider
-                onDragStart={handlePaneDragStart}
-                onDragEnd={handlePaneDragEnd}
-                collisionDetector={closestCenter}
-              >
-                <DragDropSensors />
-                <PaneGrid
-                  panes={visiblePanes()}
-                  renderPane={(pane) => {
-                    const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
-                    return (
-                      <Show when={pane.directory} fallback={
-                        <HomePane paneId={pane.id} isFocused={isFocused} />
-                      }>
-                        {(directory) => (
-                          <SDKProvider directory={directory()!}>
-                            <SyncProvider>
-                              <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
-                                <SessionPane
-                                  mode="multi"
-                                  paneId={pane.id}
-                                  directory={directory()!}
-                                  sessionId={pane.sessionId}
-                                  isFocused={isFocused}
-                                  reviewMode="global"
-                                  onSessionChange={(sessionId: string | undefined) => multiPane.updatePane(pane.id, { sessionId })}
-                                  onDirectoryChange={(dir: string) => multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })}
-                                  onClose={() => multiPane.removePane(pane.id)}
-                                />
-                              </PaneSyncedProviders>
-                            </SyncProvider>
-                          </SDKProvider>
-                        )}
-                      </Show>
-                    )
-                  }}
-                />
-                <DragOverlay>
-                  <Show when={activeTitle()}>
-                    {(title) => (
-                    <div
-                      class="pointer-events-none rounded-md border border-border-weak-base px-3 py-2 shadow-xs-border-base"
-                      style={{ "background-color": dragOverlayBackground }}
-                    >
-                        <div class="text-12-medium text-text-strong">{title()}</div>
-                        <Show when={activeProject()}>
-                          {(project) => <div class="text-11-regular text-text-weak">{project()}</div>}
+          <Show
+            when={layout.multiPane.view() === "grid"}
+            fallback={<MultiPaneKanbanView panes={visiblePanes()} />}
+          >
+            <div class="flex-1 min-h-0 flex">
+              <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+                <DragDropProvider
+                  onDragStart={handlePaneDragStart}
+                  onDragEnd={handlePaneDragEnd}
+                  collisionDetector={closestCenter}
+                >
+                  <DragDropSensors />
+                  <PaneGrid
+                    panes={visiblePanes()}
+                    renderPane={(pane) => {
+                      const isFocused = createMemo(() => multiPane.focusedPaneId() === pane.id)
+                      return (
+                        <Show
+                          when={pane.directory}
+                          fallback={<HomePane paneId={pane.id} isFocused={isFocused} />}
+                        >
+                          {(directory) => (
+                            <SDKProvider directory={directory()!}>
+                              <SyncProvider>
+                                <PaneSyncedProviders paneId={pane.id} directory={directory()!}>
+                                  <SessionPane
+                                    mode="multi"
+                                    paneId={pane.id}
+                                    directory={directory()!}
+                                    sessionId={pane.sessionId}
+                                    isFocused={isFocused}
+                                    reviewMode="global"
+                                    onSessionChange={(sessionId: string | undefined) =>
+                                      multiPane.updatePane(pane.id, { sessionId })
+                                    }
+                                    onDirectoryChange={(dir: string) =>
+                                      multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })
+                                    }
+                                    onClose={() => multiPane.removePane(pane.id)}
+                                  />
+                                </PaneSyncedProviders>
+                              </SyncProvider>
+                            </SDKProvider>
+                          )}
                         </Show>
-                      </div>
-                    )}
-                  </Show>
-                </DragOverlay>
-              </DragDropProvider>
+                      )
+                    }}
+                  />
+                  <DragOverlay>
+                    <Show when={activeTitle()}>
+                      {(title) => (
+                        <div
+                          class="pointer-events-none rounded-md border border-border-weak-base px-3 py-2 shadow-xs-border-base"
+                          style={{ "background-color": dragOverlayBackground }}
+                        >
+                          <div class="text-12-medium text-text-strong">{title()}</div>
+                          <Show when={activeProject()}>
+                            {(project) => <div class="text-11-regular text-text-weak">{project()}</div>}
+                          </Show>
+                        </div>
+                      )}
+                    </Show>
+                  </DragOverlay>
+                </DragDropProvider>
+              </div>
+              <GlobalReviewWrapper />
             </div>
-            <GlobalReviewWrapper />
-          </div>
-          <GlobalPromptWrapper />
+            <GlobalPromptWrapper />
+          </Show>
         </Show>
       </div>
     </div>

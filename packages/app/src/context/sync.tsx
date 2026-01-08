@@ -17,6 +17,38 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const setStore = (...args: [any, ...any[]]) => (child()[1] as (...args: any[]) => void)(...args)
     const absolute = (path: string) => (store().path.directory + "/" + path).replace("//", "/")
 
+    type SetState = ReturnType<typeof child>[1]
+
+    const mergeMessages = (setTarget: SetState, sessionID: string, items: Message[]) => {
+      if (items.length === 0) return
+      setTarget(
+        produce((draft) => {
+          const current = draft.message[sessionID]
+          if (!current) {
+            draft.message[sessionID] = items.slice()
+            return
+          }
+          for (const item of items) {
+            const result = Binary.search(current, item.id, (m) => m.id)
+            if (result.found) {
+              current[result.index] = item
+              continue
+            }
+            current.splice(result.index, 0, item)
+          }
+        }),
+      )
+    }
+
+    const mergeParts = (setTarget: SetState, messageID: string, parts: Part[]) => {
+      const sorted = parts
+        .filter((p) => !!p?.id)
+        .slice()
+        .sort((a, b) => a.id.localeCompare(b.id))
+      if (sorted.length === 0) return
+      setTarget("part", messageID, reconcile(sorted, { key: "id" }))
+    }
+
     return {
       get data() {
         return store()
@@ -73,6 +105,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
         },
+        mergeMessage(input: { info: Message; parts?: Part[] }) {
+          const [, localSetStore] = child()
+          mergeMessages(localSetStore, input.info.sessionID, [input.info])
+          mergeParts(localSetStore, input.info.id, input.parts ?? [])
+        },
         async sync(sessionID: string, _isRetry = false) {
           const [localStore, localSetStore] = child()
           const client = sdk.client
@@ -103,21 +140,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               .slice()
               .sort((a, b) => a.id.localeCompare(b.id))
 
-            localSetStore("message", sessionID, reconcile(serverMessages, { key: "id" }))
+            mergeMessages(localSetStore, sessionID, serverMessages)
 
             for (const message of messages.data ?? []) {
               if (!message?.info?.id) continue
-              localSetStore(
-                "part",
-                message.info.id,
-                reconcile(
-                  message.parts
-                    .filter((p) => !!p?.id)
-                    .slice()
-                    .sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
+              mergeParts(localSetStore, message.info.id, message.parts ?? [])
             }
 
             localSetStore("session_diff", sessionID, reconcile(diff.data ?? [], { key: "file" }))
