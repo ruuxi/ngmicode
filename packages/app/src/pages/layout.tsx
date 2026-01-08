@@ -364,37 +364,19 @@ export default function Layout(props: ParentProps) {
     queueMicrotask(() => scrollToSession(targetSession.id))
   }
 
-  async function archiveSession(session: Session, removeWorktree?: boolean) {
+  async function archiveSession(session: Session, _removeWorktree?: boolean) {
     const [store, setStore] = globalSync.child(session.directory)
     const sessions = store.session ?? []
     const index = sessions.findIndex((s) => s.id === session.id)
     const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
-    // Check if session has worktree and needs confirmation
-    if (session.worktree && session.worktree.cleanup === "ask" && removeWorktree === undefined) {
-      dialog.show(() => (
-        <DialogWorktreeCleanup
-          session={session}
-          onConfirm={(shouldRemove) => archiveSession(session, shouldRemove)}
-        />
-      ))
-      return
-    }
-
-    // If worktree needs to be removed, call the delete endpoint with removeWorktree flag
-    if (session.worktree && removeWorktree) {
-      await globalSDK.client.session.delete({
-        directory: session.directory,
-        sessionID: session.id,
-        removeWorktree: true,
-      })
-    } else {
-      await globalSDK.client.session.update({
-        directory: session.directory,
-        sessionID: session.id,
-        time: { archived: Date.now() },
-      })
-    }
+    // TODO: worktree cleanup pending SDK regeneration
+    // For now, always archive via update without worktree handling
+    await globalSDK.client.session.update({
+      directory: session.directory,
+      sessionID: session.id,
+      time: { archived: Date.now() },
+    })
 
     setStore(
       produce((draft) => {

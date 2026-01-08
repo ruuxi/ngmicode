@@ -30,9 +30,11 @@ import Marketplace from "@/pages/marketplace"
 import { ErrorPage } from "./pages/error"
 import { iife } from "@opencode-ai/util/iife"
 
+export { PlatformProvider, type Platform } from "@/context/platform"
+
 declare global {
   interface Window {
-    __OPENCODE__?: { updaterEnabled?: boolean; port?: number }
+    __OPENCODE__?: { updaterEnabled?: boolean; port?: number; serverReady?: boolean }
     __OPENCODE_SAFE_GET_COMPUTED_STYLE__?: boolean
   }
 }
@@ -74,7 +76,8 @@ function ServerKey(props: ParentProps) {
   )
 }
 
-export function App() {
+/** Base providers that wrap the entire app (fonts, themes, dialogs, etc.) */
+export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Font />
@@ -84,50 +87,7 @@ export function App() {
             <MarkedProvider>
               <DiffComponentProvider component={Diff}>
                 <CodeComponentProvider component={Code}>
-                  <ServerProvider defaultUrl={defaultServerUrl}>
-                    <ServerKey>
-                      <GlobalSDKProvider>
-                        <GlobalSyncProvider>
-                          <Router
-                            root={(props) => (
-                              <PermissionProvider>
-                                <LayoutProvider>
-                                  <NotificationProvider>
-                                    <CommandProvider>
-                                      <VoiceProvider>
-                                        <Layout>{props.children}</Layout>
-                                      </VoiceProvider>
-                                    </CommandProvider>
-                                  </NotificationProvider>
-                                </LayoutProvider>
-                              </PermissionProvider>
-                            )}
-                          >
-                            <Route path="/" component={Home} />
-                            <Route path="/marketplace" component={Marketplace} />
-                            <Route path="/multi" component={MultiPanePage} />
-                            <Route path="/:dir" component={DirectoryLayout}>
-                              <Route path="/" component={() => <Navigate href="session" />} />
-                              <Route
-                                path="/session/:id?"
-                                component={(p) => (
-                                  <Show when={p.params.id ?? "new"} keyed>
-                                    <TerminalProvider>
-                                      <FileProvider>
-                                        <PromptProvider>
-                                          <Session />
-                                        </PromptProvider>
-                                      </FileProvider>
-                                    </TerminalProvider>
-                                  </Show>
-                                )}
-                              />
-                            </Route>
-                          </Router>
-                        </GlobalSyncProvider>
-                      </GlobalSDKProvider>
-                    </ServerKey>
-                  </ServerProvider>
+                  {props.children}
                 </CodeComponentProvider>
               </DiffComponentProvider>
             </MarkedProvider>
@@ -135,5 +95,63 @@ export function App() {
         </ErrorBoundary>
       </ThemeProvider>
     </MetaProvider>
+  )
+}
+
+/** Main app interface with routing and session management */
+export function AppInterface() {
+  return (
+    <ServerProvider defaultUrl={defaultServerUrl}>
+      <ServerKey>
+        <GlobalSDKProvider>
+          <GlobalSyncProvider>
+            <Router
+              root={(props) => (
+                <PermissionProvider>
+                  <LayoutProvider>
+                    <NotificationProvider>
+                      <CommandProvider>
+                        <VoiceProvider>
+                          <Layout>{props.children}</Layout>
+                        </VoiceProvider>
+                      </CommandProvider>
+                    </NotificationProvider>
+                  </LayoutProvider>
+                </PermissionProvider>
+              )}
+            >
+              <Route path="/" component={Home} />
+              <Route path="/marketplace" component={Marketplace} />
+              <Route path="/multi" component={MultiPanePage} />
+              <Route path="/:dir" component={DirectoryLayout}>
+                <Route path="/" component={() => <Navigate href="session" />} />
+                <Route
+                  path="/session/:id?"
+                  component={(p) => (
+                    <Show when={p.params.id ?? "new"} keyed>
+                      <TerminalProvider>
+                        <FileProvider>
+                          <PromptProvider>
+                            <Session />
+                          </PromptProvider>
+                        </FileProvider>
+                      </TerminalProvider>
+                    </Show>
+                  )}
+                />
+              </Route>
+            </Router>
+          </GlobalSyncProvider>
+        </GlobalSDKProvider>
+      </ServerKey>
+    </ServerProvider>
+  )
+}
+
+export function App() {
+  return (
+    <AppBaseProviders>
+      <AppInterface />
+    </AppBaseProviders>
   )
 }

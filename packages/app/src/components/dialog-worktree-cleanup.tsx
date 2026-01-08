@@ -33,7 +33,7 @@ export function DialogWorktreeCleanup(props: {
               This session is using a git worktree at:
             </div>
             <div class="text-12-regular text-text-subtle break-all font-mono bg-surface-raised-base px-2 py-1 rounded mt-1">
-              {props.session.worktree?.path}
+              {(props.session as any).worktree?.path}
             </div>
           </div>
         </div>

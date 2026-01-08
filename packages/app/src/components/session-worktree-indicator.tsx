@@ -14,8 +14,9 @@ export function WorktreeStatusIndicator() {
     return sessions.find((s) => s.id === params.id)
   })
 
-  const hasWorktree = createMemo(() => !!currentSession()?.worktree)
-  const worktreePath = createMemo(() => currentSession()?.worktree?.path)
+  // TODO: worktree support pending SDK regeneration
+  const hasWorktree = createMemo(() => !!(currentSession() as any)?.worktree)
+  const worktreePath = createMemo(() => (currentSession() as any)?.worktree?.path)
 
   return (
     <Show when={hasWorktree()}>

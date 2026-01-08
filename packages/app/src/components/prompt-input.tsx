@@ -1238,11 +1238,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       let existing = info()
       if (!existing) {
-        const worktreeEnabled = layout.worktree.enabled()
-        const worktreeCleanup = layout.worktree.cleanup()
-        const created = await sdk.client.session.create(
-          worktreeEnabled ? { useWorktree: true, worktreeCleanup } : {},
-        )
+        // TODO: worktree support pending SDK regeneration
+        // const worktreeEnabled = layout.worktree.enabled()
+        // const worktreeCleanup = layout.worktree.cleanup()
+        const created = await sdk.client.session.create({})
         existing = created.data ?? undefined
         if (existing) {
           if (props.onSessionCreated) {
@@ -1454,8 +1453,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           messageID,
           parts: requestParts,
           variant,
-          thinking,
-          claudeCodeFlow,
+          // TODO: thinking and claudeCodeFlow pending SDK regeneration
         })
         .then((response) => {
           const data = response.data
