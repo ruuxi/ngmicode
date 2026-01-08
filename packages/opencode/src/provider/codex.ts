@@ -49,9 +49,25 @@ export namespace CodexProvider {
     return input.toLowerCase().replace(/[^a-z]/g, "")
   }
 
+  const effortOrder = ["minimal", "low", "medium", "high", "xhigh"]
+
+  function sortEfforts(input: string[]) {
+    const order = new Map(effortOrder.map((value, index) => [value, index]))
+    return input.slice().sort((a, b) => {
+      const aIndex = order.get(a) ?? effortOrder.length
+      const bIndex = order.get(b) ?? effortOrder.length
+      if (aIndex === bIndex) return a.localeCompare(b)
+      return aIndex - bIndex
+    })
+  }
+
   function readEfforts(input: unknown): string[] {
     const result: string[] = []
     for (const entry of readArray(input)) {
+      if (typeof entry === "string") {
+        result.push(normalizeEffort(entry))
+        continue
+      }
       if (!isRecord(entry)) continue
       const raw = readString(entry.reasoningEffort) ?? readString(entry.reasoning_effort)
       if (!raw) continue
@@ -94,7 +110,9 @@ export namespace CodexProvider {
       if (!id) continue
       const name = resolveModelName(record, id)
       const efforts = readEfforts(record.supportedReasoningEfforts ?? record.supported_reasoning_efforts)
-      const supported = efforts.length > 0 ? Array.from(new Set(efforts)) : ["low", "medium", "high"]
+      const supported = efforts.length > 0
+        ? sortEfforts(Array.from(new Set(efforts)))
+        : sortEfforts(["low", "medium", "high"])
       const variants = Object.fromEntries(
         supported.map((effort) => [effort, { reasoningEffort: effort }]),
       )

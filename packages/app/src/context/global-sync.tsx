@@ -471,7 +471,34 @@ function createGlobalSync() {
     }
 
     // Handle AskUserQuestion events (not in typed SDK events)
-    const eventType = (event as unknown as { type: string }).type
+    const eventType = (event as unknown as { type?: string }).type
+    if (eventType === "codex.app-server.exited") {
+      const props = (event as unknown as { properties?: { message?: string } }).properties
+      const detail =
+        typeof props?.message === "string" && props.message.length > 0 ? props.message : "Codex app-server exited"
+      const project = getFilename(directory)
+      const description = project ? `${project}: ${detail}` : detail
+      showToast({
+        variant: "error",
+        icon: "circle-ban-sign",
+        title: "Codex stopped",
+        description,
+        persistent: true,
+        actions: [
+          {
+            label: "Restart Codex",
+            onClick: () => {
+              void globalSDK.client.global.dispose().catch(() => {})
+            },
+          },
+          {
+            label: "Dismiss",
+            onClick: "dismiss",
+          },
+        ],
+      })
+      return
+    }
     if (eventType === "askuser.asked") {
       const props = (event as unknown as { properties: AskUserQuestionRequest }).properties
       const sessionID = props.sessionID
