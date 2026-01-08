@@ -454,7 +454,9 @@ function MultiPaneContent() {
                   </DragOverlay>
                 </DragDropProvider>
               </div>
-              <GlobalReviewWrapper />
+              <Show when={!multiPane.maximizedPaneId()}>
+                <GlobalReviewWrapper />
+              </Show>
             </div>
             <GlobalPromptWrapper />
           </Show>
