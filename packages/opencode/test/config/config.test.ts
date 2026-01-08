@@ -105,7 +105,7 @@ test("handles environment variable substitution", async () => {
           path.join(dir, "opencode.json"),
           JSON.stringify({
             $schema: "https://opencode.ai/config.json",
-            username: "{env:TEST_VAR}",
+            theme: "{env:TEST_VAR}",
           }),
         )
       },
@@ -114,7 +114,7 @@ test("handles environment variable substitution", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.username).toBe("test_theme")
+        expect(config.theme).toBe("test_theme")
       },
     })
   } finally {
@@ -129,12 +129,12 @@ test("handles environment variable substitution", async () => {
 test("handles file inclusion substitution", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      await Bun.write(path.join(dir, "included.txt"), "test_username")
+      await Bun.write(path.join(dir, "included.txt"), "test_theme")
       await Bun.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
-          username: "{file:included.txt}",
+          theme: "{file:included.txt}",
         }),
       )
     },
@@ -143,7 +143,7 @@ test("handles file inclusion substitution", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.username).toBe("test_username")
+      expect(config.theme).toBe("test_theme")
     },
   })
 })
