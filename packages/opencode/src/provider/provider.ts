@@ -440,16 +440,6 @@ export namespace Provider {
         },
       }
     },
-    "claude-agent": async () => {
-      // Always autoload to make it visible in the UI
-      // API key check happens when actually using the provider
-      return {
-        autoload: true,
-        options: {
-          __isClaudeAgent: true,
-        },
-      }
-    },
   }
 
   export const Model = z

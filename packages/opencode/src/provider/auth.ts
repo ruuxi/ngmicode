@@ -212,7 +212,7 @@ export namespace ProviderAuth {
 
   export async function methods() {
     const s = await state().then((x) => x.methods)
-    const result = mapValues(s, (x) =>
+    return mapValues(s, (x) =>
       x.methods.map(
         (y): Method => ({
           type: y.type,
@@ -220,13 +220,6 @@ export namespace ProviderAuth {
         }),
       ),
     )
-
-    // Claude Code uses the same auth as Anthropic
-    if (result["anthropic"]) {
-      result["claude-agent"] = result["anthropic"]
-    }
-
-    return result
   }
 
   export const Authorization = z
@@ -246,20 +239,11 @@ export namespace ProviderAuth {
       method: z.number(),
     }),
     async (input): Promise<Authorization | undefined> => {
-      // Claude Code uses Anthropic's auth
-      const actualProviderID = input.providerID === "claude-agent" ? "anthropic" : input.providerID
-      const auth = await state().then((s) => s.methods[actualProviderID])
-      if (!auth) return undefined
+      const auth = await state().then((s) => s.methods[input.providerID])
       const method = auth.methods[input.method]
       if (method.type === "oauth") {
         const result = await method.authorize()
-        // Store pending auth under both the actual provider and the requested provider
-        await state().then((s) => {
-          s.pending[actualProviderID] = result
-          if (input.providerID !== actualProviderID) {
-            s.pending[input.providerID] = result
-          }
-        })
+        await state().then((s) => (s.pending[input.providerID] = result))
         return {
           url: result.url,
           method: result.method,
@@ -276,9 +260,7 @@ export namespace ProviderAuth {
       code: z.string().optional(),
     }),
     async (input) => {
-      // Claude Code uses Anthropic's auth
-      const actualProviderID = input.providerID === "claude-agent" ? "anthropic" : input.providerID
-      const match = await state().then((s) => s.pending[input.providerID] || s.pending[actualProviderID])
+      const match = await state().then((s) => s.pending[input.providerID])
       if (!match) throw new OauthMissing({ providerID: input.providerID })
       let result
 
@@ -294,15 +276,13 @@ export namespace ProviderAuth {
       if (result?.type === "success") {
         if (actualProviderID === "codex") return
         if ("key" in result) {
-          // Store under the actual provider (anthropic) so both can use it
-          await Auth.set(actualProviderID, {
+          await Auth.set(input.providerID, {
             type: "api",
             key: result.key,
           })
         }
         if ("refresh" in result) {
-          // Store under the actual provider (anthropic) so both can use it
-          await Auth.set(actualProviderID, {
+          await Auth.set(input.providerID, {
             type: "oauth",
             access: result.access,
             refresh: result.refresh,

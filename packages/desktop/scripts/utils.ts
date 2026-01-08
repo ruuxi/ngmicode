@@ -45,9 +45,4 @@ export async function copyBinaryToSidecarFolder(source: string, target = RUST_TA
   await $`cp ${source} ${dest}`
 
   console.log(`Copied ${source} to ${dest}`)
-
-  // On Windows, wait briefly for antivirus to finish scanning the new .exe
-  if (process.platform === "win32") {
-    await Bun.sleep(2000)
-  }
 }
