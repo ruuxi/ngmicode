@@ -4,6 +4,7 @@ import { Provider } from "../provider/provider"
 import { generateObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
 import { Instance } from "../project/instance"
+import { Truncate } from "../tool/truncation"
 
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
@@ -47,7 +48,11 @@ export namespace Agent {
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
       doom_loop: "ask",
-      external_directory: "ask",
+      external_directory: {
+        "*": "ask",
+        [Truncate.DIR]: "allow",
+      },
+      question: "deny",
       // mirrors github.com/github/gitignore Node.gitignore pattern for .env files
       read: {
         "*": "allow",
@@ -62,7 +67,13 @@ export namespace Agent {
       build: {
         name: "build",
         options: {},
-        permission: PermissionNext.merge(defaults, user),
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+          }),
+          user,
+        ),
         mode: "primary",
         native: true,
       },
@@ -72,6 +83,7 @@ export namespace Agent {
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({
+            question: "allow",
             edit: {
               "*": "deny",
               ".opencode/plan/*.md": "allow",
@@ -96,7 +108,6 @@ export namespace Agent {
         options: {},
         mode: "subagent",
         native: true,
-        hidden: true,
       },
       explore: {
         name: "explore",
@@ -112,6 +123,9 @@ export namespace Agent {
             websearch: "allow",
             codesearch: "allow",
             read: "allow",
+            external_directory: {
+              [Truncate.DIR]: "allow",
+            },
           }),
           user,
         ),
@@ -142,6 +156,7 @@ export namespace Agent {
         options: {},
         native: true,
         hidden: true,
+        temperature: 0.5,
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({
@@ -189,6 +204,10 @@ export namespace Agent {
       item.topP = value.top_p ?? item.topP
       item.mode = value.mode ?? item.mode
       item.color = value.color ?? item.color
+<<<<<<< HEAD
+=======
+      item.hidden = value.hidden ?? item.hidden
+>>>>>>> 9fb24074c8708096b15e719ff6116c805d50b47f
       item.name = value.name ?? item.name
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})

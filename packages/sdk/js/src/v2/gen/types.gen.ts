@@ -32,7 +32,7 @@ export type Project = {
     updated: number
     initialized?: number
   }
-  sandboxes?: Array<string>
+  sandboxes: Array<string>
 }
 
 export type EventProjectUpdated = {
@@ -92,8 +92,6 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
-  thinking?: boolean
-  claudeCodeFlow?: boolean
 }
 
 export type ProviderAuthError = {
@@ -461,35 +459,6 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventClaudePluginLoaded = {
-  type: "claude-plugin.loaded"
-  properties: {
-    pluginId: string
-    pluginName: string
-  }
-}
-
-export type EventClaudePluginUnloaded = {
-  type: "claude-plugin.unloaded"
-  properties: {
-    pluginId: string
-  }
-}
-
-export type EventClaudePluginEnabled = {
-  type: "claude-plugin.enabled"
-  properties: {
-    pluginId: string
-  }
-}
-
-export type EventClaudePluginDisabled = {
-  type: "claude-plugin.disabled"
-  properties: {
-    pluginId: string
-  }
-}
-
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -548,6 +517,67 @@ export type EventSessionIdle = {
   }
 }
 
+export type QuestionOption = {
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+  /**
+   * Explanation of choice
+   */
+  description: string
+}
+
+export type QuestionInfo = {
+  /**
+   * Complete question
+   */
+  question: string
+  /**
+   * Very short label (max 12 chars)
+   */
+  header: string
+  /**
+   * Available choices
+   */
+  options: Array<QuestionOption>
+}
+
+export type QuestionRequest = {
+  id: string
+  sessionID: string
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionInfo>
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type EventQuestionAsked = {
+  type: "question.asked"
+  properties: QuestionRequest
+}
+
+export type EventQuestionReplied = {
+  type: "question.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    answers: Array<string>
+  }
+}
+
+export type EventQuestionRejected = {
+  type: "question.rejected"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -589,6 +619,58 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventTuiPromptAppend = {
+  type: "tui.prompt.append"
+  properties: {
+    text: string
+  }
+}
+
+export type EventTuiCommandExecute = {
+  type: "tui.command.execute"
+  properties: {
+    command:
+      | "session.list"
+      | "session.new"
+      | "session.share"
+      | "session.interrupt"
+      | "session.compact"
+      | "session.page.up"
+      | "session.page.down"
+      | "session.half.page.up"
+      | "session.half.page.down"
+      | "session.first"
+      | "session.last"
+      | "prompt.clear"
+      | "prompt.submit"
+      | "agent.cycle"
+      | string
+  }
+}
+
+export type EventTuiToastShow = {
+  type: "tui.toast.show"
+  properties: {
+    title?: string
+    message: string
+    variant: "info" | "success" | "warning" | "error"
+    /**
+     * Duration in milliseconds
+     */
+    duration?: number
+  }
+}
+
+export type EventTuiSessionSelect = {
+  type: "tui.session.select"
+  properties: {
+    /**
+     * Session ID to navigate to
+     */
+    sessionID: string
+  }
+}
+
 export type EventMcpToolsChanged = {
   type: "mcp.tools.changed"
   properties: {
@@ -606,54 +688,6 @@ export type EventCommandExecuted = {
   }
 }
 
-export type EventAskuserAsked = {
-  type: "askuser.asked"
-  properties: {
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    questions: Array<{
-      question: string
-      header: string
-      options: Array<{
-        label: string
-        description: string
-      }>
-      multiSelect: boolean
-    }>
-  }
-}
-
-export type EventAskuserReplied = {
-  type: "askuser.replied"
-  properties: {
-    requestID: string
-    answers: {
-      [key: string]: string
-    }
-  }
-}
-
-export type EventPlanmodeReview = {
-  type: "planmode.review"
-  properties: {
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    plan: string
-  }
-}
-
-export type EventPlanmodeResponded = {
-  type: "planmode.responded"
-  properties: {
-    requestID: string
-    approved: boolean
-  }
-}
-
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -663,12 +697,6 @@ export type PermissionRule = {
 }
 
 export type PermissionRuleset = Array<PermissionRule>
-
-export type WorktreeInfo = {
-  path: string
-  branch: string
-  cleanup?: "ask" | "always" | "never"
-}
 
 export type Session = {
   id: string
@@ -699,7 +727,6 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
-  worktree?: WorktreeInfo
 }
 
 export type EventSessionCreated = {
@@ -818,23 +845,22 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventClaudePluginLoaded
-  | EventClaudePluginUnloaded
-  | EventClaudePluginEnabled
-  | EventClaudePluginDisabled
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionStatus
   | EventSessionIdle
+  | EventQuestionAsked
+  | EventQuestionReplied
+  | EventQuestionRejected
   | EventSessionCompacted
   | EventFileEdited
   | EventTodoUpdated
+  | EventTuiPromptAppend
+  | EventTuiCommandExecute
+  | EventTuiToastShow
+  | EventTuiSessionSelect
   | EventMcpToolsChanged
   | EventCommandExecuted
-  | EventAskuserAsked
-  | EventAskuserReplied
-  | EventPlanmodeReview
-  | EventPlanmodeResponded
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -869,88 +895,358 @@ export type NotFoundError = {
   }
 }
 
-export type ClaudePluginManifest = {
-  name: string
-  version: string
-  description?: string
-  author?:
-    | {
-        name: string
-        email?: string
-        url?: string
-      }
-    | string
-  homepage?: string
-  repository?: string
-  license?: string
-  keywords?: Array<string>
-  commands?: Array<string>
-  agents?: string
-  skills?: string
-  hooks?: string
-  mcpServers?: {
-    [key: string]: unknown
-  }
-  lspServers?: string
-}
-
-export type ClaudePluginLoaded = {
-  id: string
-  name: string
-  path: string
-  manifest: ClaudePluginManifest
-  commandCount: number
-  agentCount: number
-  hookCount: number
-  mcpCount: number
-  lspCount: number
-}
-
-export type ClaudePluginInstalled = {
-  id: string
-  source: "local" | "marketplace"
-  path: string
-  enabled: boolean
-  manifest: ClaudePluginManifest
-  installedAt: number
-  updatedAt?: number
-}
-
-export type ClaudePluginMarketplaceEntry = {
-  name: string
-  id?: string
-  version?: string
-  description?: string
-  author?: {
-    name: string
-    email?: string
-  }
-  source:
-    | string
-    | {
-        source: "url"
-        url: string
-      }
-  homepage?: string
-  repository?: string
-  downloads?: number
-  rating?: number
-  tags?: Array<string>
-  category?: string
-  strict?: boolean
-  lspServers?: {
-    [key: string]: {
-      command: string
-      args?: Array<string>
-      extensionToLanguage?: {
-        [key: string]: string
-      }
-      env?: {
-        [key: string]: string
-      }
-      startupTimeout?: number
-    }
-  }
+/**
+ * Custom keybind configurations
+ */
+export type KeybindsConfig = {
+  /**
+   * Leader key for keybind combinations
+   */
+  leader?: string
+  /**
+   * Exit the application
+   */
+  app_exit?: string
+  /**
+   * Open external editor
+   */
+  editor_open?: string
+  /**
+   * List available themes
+   */
+  theme_list?: string
+  /**
+   * Toggle sidebar
+   */
+  sidebar_toggle?: string
+  /**
+   * Toggle session scrollbar
+   */
+  scrollbar_toggle?: string
+  /**
+   * Toggle username visibility
+   */
+  username_toggle?: string
+  /**
+   * View status
+   */
+  status_view?: string
+  /**
+   * Export session to editor
+   */
+  session_export?: string
+  /**
+   * Create a new session
+   */
+  session_new?: string
+  /**
+   * List all sessions
+   */
+  session_list?: string
+  /**
+   * Show session timeline
+   */
+  session_timeline?: string
+  /**
+   * Fork session from message
+   */
+  session_fork?: string
+  /**
+   * Rename session
+   */
+  session_rename?: string
+  /**
+   * Share current session
+   */
+  session_share?: string
+  /**
+   * Unshare current session
+   */
+  session_unshare?: string
+  /**
+   * Interrupt current session
+   */
+  session_interrupt?: string
+  /**
+   * Compact the session
+   */
+  session_compact?: string
+  /**
+   * Scroll messages up by one page
+   */
+  messages_page_up?: string
+  /**
+   * Scroll messages down by one page
+   */
+  messages_page_down?: string
+  /**
+   * Scroll messages up by half page
+   */
+  messages_half_page_up?: string
+  /**
+   * Scroll messages down by half page
+   */
+  messages_half_page_down?: string
+  /**
+   * Navigate to first message
+   */
+  messages_first?: string
+  /**
+   * Navigate to last message
+   */
+  messages_last?: string
+  /**
+   * Navigate to next message
+   */
+  messages_next?: string
+  /**
+   * Navigate to previous message
+   */
+  messages_previous?: string
+  /**
+   * Navigate to last user message
+   */
+  messages_last_user?: string
+  /**
+   * Copy message
+   */
+  messages_copy?: string
+  /**
+   * Undo message
+   */
+  messages_undo?: string
+  /**
+   * Redo message
+   */
+  messages_redo?: string
+  /**
+   * Toggle code block concealment in messages
+   */
+  messages_toggle_conceal?: string
+  /**
+   * Toggle tool details visibility
+   */
+  tool_details?: string
+  /**
+   * List available models
+   */
+  model_list?: string
+  /**
+   * Next recently used model
+   */
+  model_cycle_recent?: string
+  /**
+   * Previous recently used model
+   */
+  model_cycle_recent_reverse?: string
+  /**
+   * Next favorite model
+   */
+  model_cycle_favorite?: string
+  /**
+   * Previous favorite model
+   */
+  model_cycle_favorite_reverse?: string
+  /**
+   * List available commands
+   */
+  command_list?: string
+  /**
+   * List agents
+   */
+  agent_list?: string
+  /**
+   * Next agent
+   */
+  agent_cycle?: string
+  /**
+   * Previous agent
+   */
+  agent_cycle_reverse?: string
+  /**
+   * Cycle model variants
+   */
+  variant_cycle?: string
+  /**
+   * Clear input field
+   */
+  input_clear?: string
+  /**
+   * Paste from clipboard
+   */
+  input_paste?: string
+  /**
+   * Submit input
+   */
+  input_submit?: string
+  /**
+   * Insert newline in input
+   */
+  input_newline?: string
+  /**
+   * Move cursor left in input
+   */
+  input_move_left?: string
+  /**
+   * Move cursor right in input
+   */
+  input_move_right?: string
+  /**
+   * Move cursor up in input
+   */
+  input_move_up?: string
+  /**
+   * Move cursor down in input
+   */
+  input_move_down?: string
+  /**
+   * Select left in input
+   */
+  input_select_left?: string
+  /**
+   * Select right in input
+   */
+  input_select_right?: string
+  /**
+   * Select up in input
+   */
+  input_select_up?: string
+  /**
+   * Select down in input
+   */
+  input_select_down?: string
+  /**
+   * Move to start of line in input
+   */
+  input_line_home?: string
+  /**
+   * Move to end of line in input
+   */
+  input_line_end?: string
+  /**
+   * Select to start of line in input
+   */
+  input_select_line_home?: string
+  /**
+   * Select to end of line in input
+   */
+  input_select_line_end?: string
+  /**
+   * Move to start of visual line in input
+   */
+  input_visual_line_home?: string
+  /**
+   * Move to end of visual line in input
+   */
+  input_visual_line_end?: string
+  /**
+   * Select to start of visual line in input
+   */
+  input_select_visual_line_home?: string
+  /**
+   * Select to end of visual line in input
+   */
+  input_select_visual_line_end?: string
+  /**
+   * Move to start of buffer in input
+   */
+  input_buffer_home?: string
+  /**
+   * Move to end of buffer in input
+   */
+  input_buffer_end?: string
+  /**
+   * Select to start of buffer in input
+   */
+  input_select_buffer_home?: string
+  /**
+   * Select to end of buffer in input
+   */
+  input_select_buffer_end?: string
+  /**
+   * Delete line in input
+   */
+  input_delete_line?: string
+  /**
+   * Delete to end of line in input
+   */
+  input_delete_to_line_end?: string
+  /**
+   * Delete to start of line in input
+   */
+  input_delete_to_line_start?: string
+  /**
+   * Backspace in input
+   */
+  input_backspace?: string
+  /**
+   * Delete character in input
+   */
+  input_delete?: string
+  /**
+   * Undo in input
+   */
+  input_undo?: string
+  /**
+   * Redo in input
+   */
+  input_redo?: string
+  /**
+   * Move word forward in input
+   */
+  input_word_forward?: string
+  /**
+   * Move word backward in input
+   */
+  input_word_backward?: string
+  /**
+   * Select word forward in input
+   */
+  input_select_word_forward?: string
+  /**
+   * Select word backward in input
+   */
+  input_select_word_backward?: string
+  /**
+   * Delete word forward in input
+   */
+  input_delete_word_forward?: string
+  /**
+   * Delete word backward in input
+   */
+  input_delete_word_backward?: string
+  /**
+   * Previous history item
+   */
+  history_previous?: string
+  /**
+   * Next history item
+   */
+  history_next?: string
+  /**
+   * Next child session
+   */
+  session_child_cycle?: string
+  /**
+   * Previous child session
+   */
+  session_child_cycle_reverse?: string
+  /**
+   * Go to parent session
+   */
+  session_parent?: string
+  /**
+   * Suspend terminal
+   */
+  terminal_suspend?: string
+  /**
+   * Toggle terminal title
+   */
+  terminal_title_toggle?: string
+  /**
+   * Toggle tips on home screen
+   */
+  tips_toggle?: string
 }
 
 /**
@@ -990,6 +1286,7 @@ export type PermissionRuleConfig = PermissionActionConfig | PermissionObjectConf
 
 export type PermissionConfig =
   | {
+      __originalKeys?: Array<string>
       read?: PermissionRuleConfig
       edit?: PermissionRuleConfig
       glob?: PermissionRuleConfig
@@ -1000,12 +1297,13 @@ export type PermissionConfig =
       external_directory?: PermissionRuleConfig
       todowrite?: PermissionActionConfig
       todoread?: PermissionActionConfig
+      question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
       websearch?: PermissionActionConfig
       codesearch?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
-      [key: string]: PermissionRuleConfig | PermissionActionConfig | undefined
+      [key: string]: PermissionRuleConfig | Array<string> | PermissionActionConfig | undefined
     }
   | PermissionActionConfig
 
@@ -1026,6 +1324,10 @@ export type AgentConfig = {
    */
   description?: string
   mode?: "subagent" | "primary" | "all"
+  /**
+   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
+   */
+  hidden?: boolean
   options?: {
     [key: string]: unknown
   }
@@ -1059,63 +1361,6 @@ export type AgentConfig = {
     | string
     | number
     | PermissionConfig
-    | undefined
-}
-
-export type ModeConfig = {
-  /**
-   * Mode identifier
-   */
-  id: string
-  /**
-   * Mode display name
-   */
-  name: string
-  description?: string
-  /**
-   * Icon name for UI display
-   */
-  icon?: string
-  /**
-   * Hex color code for the mode (e.g., #FF5733)
-   */
-  color?: string
-  /**
-   * Provider override for this mode
-   */
-  provider?: string
-  /**
-   * Default agent to use in this mode
-   */
-  default_agent?: string
-  /**
-   * Allowlist of agent names for this mode
-   */
-  allowed_agents?: Array<string>
-  /**
-   * Blocklist of agent names for this mode
-   */
-  disabled_agents?: Array<string>
-  /**
-   * Plugins required for this mode
-   */
-  requires_plugins?: Array<string>
-  /**
-   * Mode-specific overrides
-   */
-  overrides?: {
-    [key: string]: unknown
-  }
-  [key: string]:
-    | unknown
-    | string
-    | string
-    | Array<string>
-    | Array<string>
-    | Array<string>
-    | {
-        [key: string]: unknown
-      }
     | undefined
 }
 
@@ -1285,7 +1530,34 @@ export type Config = {
    * JSON schema reference for configuration validation
    */
   $schema?: string
+  /**
+   * Theme name to use for the interface
+   */
+  theme?: string
+  keybinds?: KeybindsConfig
   logLevel?: LogLevel
+  /**
+   * TUI specific settings
+   */
+  tui?: {
+    /**
+     * TUI scroll speed
+     */
+    scroll_speed?: number
+    /**
+     * Scroll acceleration settings
+     */
+    scroll_acceleration?: {
+      /**
+       * Enable scroll acceleration
+       */
+      enabled: boolean
+    }
+    /**
+     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
+     */
+    diff_style?: "auto" | "stacked"
+  }
   server?: ServerConfig
   /**
    * Command configuration, see https://opencode.ai/docs/commands
@@ -1304,19 +1576,6 @@ export type Config = {
   }
   plugin?: Array<string>
   snapshot?: boolean
-  /**
-   * Git worktree configuration for session isolation
-   */
-  worktree?: {
-    /**
-     * Enable git worktree isolation for sessions
-     */
-    enabled?: boolean
-    /**
-     * How to handle worktree cleanup when session is deleted
-     */
-    cleanup?: "ask" | "always" | "never"
-  }
   /**
    * Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing
    */
@@ -1375,12 +1634,6 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Mode configuration for the app UI
-   */
-  modes?: {
-    [key: string]: ModeConfig
-  }
-  /**
    * Custom provider configurations and model overrides
    */
   provider?: {
@@ -1390,7 +1643,12 @@ export type Config = {
    * MCP (Model Context Protocol) server configurations
    */
   mcp?: {
-    [key: string]: McpLocalConfig | McpRemoteConfig
+    [key: string]:
+      | McpLocalConfig
+      | McpRemoteConfig
+      | {
+          enabled: boolean
+        }
   }
   formatter?:
     | false
@@ -1940,314 +2198,6 @@ export type ProjectUpdateResponses = {
 
 export type ProjectUpdateResponse = ProjectUpdateResponses[keyof ProjectUpdateResponses]
 
-export type ClaudePluginListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin"
-}
-
-export type ClaudePluginListResponses = {
-  /**
-   * List of loaded plugins
-   */
-  200: Array<ClaudePluginLoaded>
-}
-
-export type ClaudePluginListResponse = ClaudePluginListResponses[keyof ClaudePluginListResponses]
-
-export type ClaudePluginInstalledData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/installed"
-}
-
-export type ClaudePluginInstalledResponses = {
-  /**
-   * List of installed plugins
-   */
-  200: Array<ClaudePluginInstalled>
-}
-
-export type ClaudePluginInstalledResponse = ClaudePluginInstalledResponses[keyof ClaudePluginInstalledResponses]
-
-export type ClaudePluginMarketplaceData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/marketplace"
-}
-
-export type ClaudePluginMarketplaceResponses = {
-  /**
-   * List of marketplace plugins
-   */
-  200: Array<ClaudePluginMarketplaceEntry>
-}
-
-export type ClaudePluginMarketplaceResponse = ClaudePluginMarketplaceResponses[keyof ClaudePluginMarketplaceResponses]
-
-export type ClaudePluginMarketplaceSearchData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    q: string
-  }
-  url: "/claude-plugin/marketplace/search"
-}
-
-export type ClaudePluginMarketplaceSearchErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ClaudePluginMarketplaceSearchError =
-  ClaudePluginMarketplaceSearchErrors[keyof ClaudePluginMarketplaceSearchErrors]
-
-export type ClaudePluginMarketplaceSearchResponses = {
-  /**
-   * Search results
-   */
-  200: Array<ClaudePluginMarketplaceEntry>
-}
-
-export type ClaudePluginMarketplaceSearchResponse =
-  ClaudePluginMarketplaceSearchResponses[keyof ClaudePluginMarketplaceSearchResponses]
-
-export type ClaudePluginInstallData = {
-  body?: {
-    id: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/install"
-}
-
-export type ClaudePluginInstallErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ClaudePluginInstallError = ClaudePluginInstallErrors[keyof ClaudePluginInstallErrors]
-
-export type ClaudePluginInstallResponses = {
-  /**
-   * Installed plugin
-   */
-  200: ClaudePluginLoaded
-}
-
-export type ClaudePluginInstallResponse = ClaudePluginInstallResponses[keyof ClaudePluginInstallResponses]
-
-export type ClaudePluginUninstallData = {
-  body?: {
-    id: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/uninstall"
-}
-
-export type ClaudePluginUninstallErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ClaudePluginUninstallError = ClaudePluginUninstallErrors[keyof ClaudePluginUninstallErrors]
-
-export type ClaudePluginUninstallResponses = {
-  /**
-   * Plugin uninstalled
-   */
-  200: boolean
-}
-
-export type ClaudePluginUninstallResponse = ClaudePluginUninstallResponses[keyof ClaudePluginUninstallResponses]
-
-export type ClaudePluginEnableData = {
-  body?: {
-    id: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/enable"
-}
-
-export type ClaudePluginEnableErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ClaudePluginEnableError = ClaudePluginEnableErrors[keyof ClaudePluginEnableErrors]
-
-export type ClaudePluginEnableResponses = {
-  /**
-   * Plugin enabled
-   */
-  200: boolean
-}
-
-export type ClaudePluginEnableResponse = ClaudePluginEnableResponses[keyof ClaudePluginEnableResponses]
-
-export type ClaudePluginDisableData = {
-  body?: {
-    id: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/disable"
-}
-
-export type ClaudePluginDisableErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ClaudePluginDisableError = ClaudePluginDisableErrors[keyof ClaudePluginDisableErrors]
-
-export type ClaudePluginDisableResponses = {
-  /**
-   * Plugin disabled
-   */
-  200: boolean
-}
-
-export type ClaudePluginDisableResponse = ClaudePluginDisableResponses[keyof ClaudePluginDisableResponses]
-
-export type ClaudePluginCommandsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/commands"
-}
-
-export type ClaudePluginCommandsResponses = {
-  /**
-   * List of commands
-   */
-  200: Array<{
-    pluginId: string
-    pluginName: string
-    name: string
-    fullName: string
-    description?: string
-  }>
-}
-
-export type ClaudePluginCommandsResponse = ClaudePluginCommandsResponses[keyof ClaudePluginCommandsResponses]
-
-export type ClaudePluginAgentsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/agents"
-}
-
-export type ClaudePluginAgentsResponses = {
-  /**
-   * List of agents
-   */
-  200: Array<{
-    pluginId: string
-    pluginName: string
-    name: string
-    fullName: string
-    description?: string
-  }>
-}
-
-export type ClaudePluginAgentsResponse = ClaudePluginAgentsResponses[keyof ClaudePluginAgentsResponses]
-
-export type ClaudePluginMarketplaceRefreshData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/marketplace/refresh"
-}
-
-export type ClaudePluginMarketplaceRefreshResponses = {
-  /**
-   * Marketplace refreshed
-   */
-  200: Array<ClaudePluginMarketplaceEntry>
-}
-
-export type ClaudePluginMarketplaceRefreshResponse =
-  ClaudePluginMarketplaceRefreshResponses[keyof ClaudePluginMarketplaceRefreshResponses]
-
-export type ClaudePluginStatsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/claude-plugin/stats"
-}
-
-export type ClaudePluginStatsResponses = {
-  /**
-   * Plugin statistics
-   */
-  200: {
-    [key: string]: {
-      name: string
-      downloads: number
-      stars: number
-      version?: string
-    }
-  }
-}
-
-export type ClaudePluginStatsResponse = ClaudePluginStatsResponses[keyof ClaudePluginStatsResponses]
-
 export type PtyListData = {
   body?: never
   path?: never
@@ -2468,28 +2418,6 @@ export type ConfigUpdateResponses = {
 
 export type ConfigUpdateResponse = ConfigUpdateResponses[keyof ConfigUpdateResponses]
 
-export type SkillListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/skill"
-}
-
-export type SkillListResponses = {
-  /**
-   * List of skills
-   */
-  200: Array<{
-    name: string
-    description: string
-    location: string
-  }>
-}
-
-export type SkillListResponse = SkillListResponses[keyof SkillListResponses]
-
 export type ToolIdsData = {
   body?: never
   path?: never
@@ -2650,6 +2578,18 @@ export type SessionListData = {
   path?: never
   query?: {
     directory?: string
+    /**
+     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
+     */
+    start?: number
+    /**
+     * Filter sessions by title (case-insensitive)
+     */
+    search?: string
+    /**
+     * Maximum number of sessions to return
+     */
+    limit?: number
   }
   url: "/session"
 }
@@ -2668,8 +2608,6 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     permission?: PermissionRuleset
-    useWorktree?: boolean
-    worktreeCleanup?: "ask" | "always" | "never"
   }
   path?: never
   query?: {
@@ -2732,7 +2670,6 @@ export type SessionDeleteData = {
   }
   query?: {
     directory?: string
-    removeWorktree?: boolean
   }
   url: "/session/{sessionID}"
 }
@@ -2866,6 +2803,9 @@ export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChil
 export type SessionTodoData = {
   body?: never
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -2903,6 +2843,9 @@ export type SessionInitData = {
     messageID: string
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -2936,8 +2879,6 @@ export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponse
 export type SessionForkData = {
   body?: {
     messageID?: string
-    useWorktree?: boolean
-    worktreeCleanup?: "ask" | "always" | "never"
   }
   path: {
     sessionID: string
@@ -3056,26 +2997,42 @@ export type SessionShareResponses = {
 
 export type SessionShareResponse = SessionShareResponses[keyof SessionShareResponses]
 
-export type MessageDiffData = {
+export type SessionDiffData = {
   body?: never
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
-    messageID?: string
   }
   query?: {
     directory?: string
+    messageID?: string
   }
-  url: "/session/{sessionID}/message/{messageID}/diff"
+  url: "/session/{sessionID}/diff"
 }
 
-export type MessageDiffResponses = {
+export type SessionDiffErrors = {
   /**
-   * Successfully retrieved diff
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
+
+export type SessionDiffResponses = {
+  /**
+   * List of diffs
    */
   200: Array<FileDiff>
 }
 
-export type MessageDiffResponse = MessageDiffResponses[keyof MessageDiffResponses]
+export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponses]
 
 export type SessionSummarizeData = {
   body?: {
@@ -3084,6 +3041,9 @@ export type SessionSummarizeData = {
     auto?: boolean
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3117,6 +3077,9 @@ export type SessionSummarizeResponse = SessionSummarizeResponses[keyof SessionSu
 export type SessionMessagesData = {
   body?: never
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3168,11 +3131,12 @@ export type SessionPromptData = {
     }
     system?: string
     variant?: string
-    thinking?: boolean
-    claudeCodeFlow?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3206,42 +3170,12 @@ export type SessionPromptResponses = {
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
 
-export type SessionDiffData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/diff"
-}
-
-export type SessionDiffErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
-
-export type SessionDiffResponses = {
-  /**
-   * List of diffs
-   */
-  200: Array<FileDiff>
-}
-
-export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponses]
-
 export type SessionMessageData = {
   body?: never
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
     /**
      * Message ID
@@ -3282,6 +3216,9 @@ export type SessionMessageResponse = SessionMessageResponses[keyof SessionMessag
 export type PartDeleteData = {
   body?: never
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
     /**
      * Message ID
@@ -3323,6 +3260,9 @@ export type PartDeleteResponse = PartDeleteResponses[keyof PartDeleteResponses]
 export type PartUpdateData = {
   body?: Part
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
     /**
      * Message ID
@@ -3378,11 +3318,12 @@ export type SessionPromptAsyncData = {
     }
     system?: string
     variant?: string
-    thinking?: boolean
-    claudeCodeFlow?: boolean
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3431,6 +3372,9 @@ export type SessionCommandData = {
     }>
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3474,6 +3418,9 @@ export type SessionShellData = {
     command: string
   }
   path: {
+    /**
+     * Session ID
+     */
     sessionID: string
   }
   query?: {
@@ -3573,76 +3520,6 @@ export type SessionUnrevertResponses = {
 
 export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
 
-export type SessionWorktreeDeleteData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/worktree"
-}
-
-export type SessionWorktreeDeleteErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionWorktreeDeleteError = SessionWorktreeDeleteErrors[keyof SessionWorktreeDeleteErrors]
-
-export type SessionWorktreeDeleteResponses = {
-  /**
-   * Worktree removed
-   */
-  200: boolean
-}
-
-export type SessionWorktreeDeleteResponse = SessionWorktreeDeleteResponses[keyof SessionWorktreeDeleteResponses]
-
-export type SessionWorktreeGetData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/worktree"
-}
-
-export type SessionWorktreeGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionWorktreeGetError = SessionWorktreeGetErrors[keyof SessionWorktreeGetErrors]
-
-export type SessionWorktreeGetResponses = {
-  /**
-   * Worktree status
-   */
-  200: {
-    exists: boolean
-    path?: string
-    cleanup?: "ask" | "always" | "never"
-  }
-}
-
-export type SessionWorktreeGetResponse = SessionWorktreeGetResponses[keyof SessionWorktreeGetResponses]
-
 export type PermissionRespondData = {
   body?: {
     response: "once" | "always" | "reject"
@@ -3682,6 +3559,7 @@ export type PermissionRespondResponse = PermissionRespondResponses[keyof Permiss
 export type PermissionReplyData = {
   body?: {
     reply: "once" | "always" | "reject"
+    message?: string
   }
   path: {
     requestID: string
@@ -3732,112 +3610,27 @@ export type PermissionListResponses = {
 
 export type PermissionListResponse = PermissionListResponses[keyof PermissionListResponses]
 
-export type AskuserReplyData = {
-  body?: {
-    answers: {
-      [key: string]: string
-    }
-  }
-  path: {
-    requestID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/askuser/{requestID}/reply"
-}
-
-export type AskuserReplyErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type AskuserReplyError = AskuserReplyErrors[keyof AskuserReplyErrors]
-
-export type AskuserReplyResponses = {
-  /**
-   * Answers submitted successfully
-   */
-  200: boolean
-}
-
-export type AskuserReplyResponse = AskuserReplyResponses[keyof AskuserReplyResponses]
-
-export type AskuserListData = {
+export type QuestionListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/askuser"
+  url: "/question"
 }
 
-export type AskuserListResponses = {
+export type QuestionListResponses = {
   /**
    * List of pending questions
    */
-  200: Array<{
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    questions: Array<{
-      question: string
-      header: string
-      options: Array<{
-        label: string
-        description: string
-      }>
-      multiSelect: boolean
-    }>
-  }>
+  200: Array<QuestionRequest>
 }
 
-export type AskuserListResponse = AskuserListResponses[keyof AskuserListResponses]
+export type QuestionListResponse = QuestionListResponses[keyof QuestionListResponses]
 
-export type AskuserListForSessionData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/askuser"
-}
-
-export type AskuserListForSessionResponses = {
-  /**
-   * List of pending questions for session
-   */
-  200: Array<{
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    questions: Array<{
-      question: string
-      header: string
-      options: Array<{
-        label: string
-        description: string
-      }>
-      multiSelect: boolean
-    }>
-  }>
-}
-
-export type AskuserListForSessionResponse = AskuserListForSessionResponses[keyof AskuserListForSessionResponses]
-
-export type PlanmodeReplyData = {
+export type QuestionReplyData = {
   body?: {
-    approved: boolean
+    answers: Array<string>
   }
   path: {
     requestID: string
@@ -3845,10 +3638,10 @@ export type PlanmodeReplyData = {
   query?: {
     directory?: string
   }
-  url: "/planmode/{requestID}/reply"
+  url: "/question/{requestID}/reply"
 }
 
-export type PlanmodeReplyErrors = {
+export type QuestionReplyErrors = {
   /**
    * Bad request
    */
@@ -3859,66 +3652,49 @@ export type PlanmodeReplyErrors = {
   404: NotFoundError
 }
 
-export type PlanmodeReplyError = PlanmodeReplyErrors[keyof PlanmodeReplyErrors]
+export type QuestionReplyError = QuestionReplyErrors[keyof QuestionReplyErrors]
 
-export type PlanmodeReplyResponses = {
+export type QuestionReplyResponses = {
   /**
-   * Response submitted successfully
+   * Question answered successfully
    */
   200: boolean
 }
 
-export type PlanmodeReplyResponse = PlanmodeReplyResponses[keyof PlanmodeReplyResponses]
+export type QuestionReplyResponse = QuestionReplyResponses[keyof QuestionReplyResponses]
 
-export type PlanmodeListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/planmode"
-}
-
-export type PlanmodeListResponses = {
-  /**
-   * List of pending plan reviews
-   */
-  200: Array<{
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    plan: string
-  }>
-}
-
-export type PlanmodeListResponse = PlanmodeListResponses[keyof PlanmodeListResponses]
-
-export type PlanmodeListForSessionData = {
+export type QuestionRejectData = {
   body?: never
   path: {
-    sessionID: string
+    requestID: string
   }
   query?: {
     directory?: string
   }
-  url: "/session/{sessionID}/planmode"
+  url: "/question/{requestID}/reject"
 }
 
-export type PlanmodeListForSessionResponses = {
+export type QuestionRejectErrors = {
   /**
-   * List of pending plan reviews for session
+   * Bad request
    */
-  200: Array<{
-    id: string
-    sessionID: string
-    messageID: string
-    callID: string
-    plan: string
-  }>
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
 }
 
-export type PlanmodeListForSessionResponse = PlanmodeListForSessionResponses[keyof PlanmodeListForSessionResponses]
+export type QuestionRejectError = QuestionRejectErrors[keyof QuestionRejectErrors]
+
+export type QuestionRejectResponses = {
+  /**
+   * Question rejected successfully
+   */
+  200: boolean
+}
+
+export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
 
 export type CommandListData = {
   body?: never
@@ -4626,6 +4402,300 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type TuiAppendPromptData = {
+  body?: {
+    text: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/append-prompt"
+}
+
+export type TuiAppendPromptErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type TuiAppendPromptError = TuiAppendPromptErrors[keyof TuiAppendPromptErrors]
+
+export type TuiAppendPromptResponses = {
+  /**
+   * Prompt processed successfully
+   */
+  200: boolean
+}
+
+export type TuiAppendPromptResponse = TuiAppendPromptResponses[keyof TuiAppendPromptResponses]
+
+export type TuiOpenHelpData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/open-help"
+}
+
+export type TuiOpenHelpResponses = {
+  /**
+   * Help dialog opened successfully
+   */
+  200: boolean
+}
+
+export type TuiOpenHelpResponse = TuiOpenHelpResponses[keyof TuiOpenHelpResponses]
+
+export type TuiOpenSessionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/open-sessions"
+}
+
+export type TuiOpenSessionsResponses = {
+  /**
+   * Session dialog opened successfully
+   */
+  200: boolean
+}
+
+export type TuiOpenSessionsResponse = TuiOpenSessionsResponses[keyof TuiOpenSessionsResponses]
+
+export type TuiOpenThemesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/open-themes"
+}
+
+export type TuiOpenThemesResponses = {
+  /**
+   * Theme dialog opened successfully
+   */
+  200: boolean
+}
+
+export type TuiOpenThemesResponse = TuiOpenThemesResponses[keyof TuiOpenThemesResponses]
+
+export type TuiOpenModelsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/open-models"
+}
+
+export type TuiOpenModelsResponses = {
+  /**
+   * Model dialog opened successfully
+   */
+  200: boolean
+}
+
+export type TuiOpenModelsResponse = TuiOpenModelsResponses[keyof TuiOpenModelsResponses]
+
+export type TuiSubmitPromptData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/submit-prompt"
+}
+
+export type TuiSubmitPromptResponses = {
+  /**
+   * Prompt submitted successfully
+   */
+  200: boolean
+}
+
+export type TuiSubmitPromptResponse = TuiSubmitPromptResponses[keyof TuiSubmitPromptResponses]
+
+export type TuiClearPromptData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/clear-prompt"
+}
+
+export type TuiClearPromptResponses = {
+  /**
+   * Prompt cleared successfully
+   */
+  200: boolean
+}
+
+export type TuiClearPromptResponse = TuiClearPromptResponses[keyof TuiClearPromptResponses]
+
+export type TuiExecuteCommandData = {
+  body?: {
+    command: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/execute-command"
+}
+
+export type TuiExecuteCommandErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type TuiExecuteCommandError = TuiExecuteCommandErrors[keyof TuiExecuteCommandErrors]
+
+export type TuiExecuteCommandResponses = {
+  /**
+   * Command executed successfully
+   */
+  200: boolean
+}
+
+export type TuiExecuteCommandResponse = TuiExecuteCommandResponses[keyof TuiExecuteCommandResponses]
+
+export type TuiShowToastData = {
+  body?: {
+    title?: string
+    message: string
+    variant: "info" | "success" | "warning" | "error"
+    /**
+     * Duration in milliseconds
+     */
+    duration?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/show-toast"
+}
+
+export type TuiShowToastResponses = {
+  /**
+   * Toast notification shown successfully
+   */
+  200: boolean
+}
+
+export type TuiShowToastResponse = TuiShowToastResponses[keyof TuiShowToastResponses]
+
+export type TuiPublishData = {
+  body?: EventTuiPromptAppend | EventTuiCommandExecute | EventTuiToastShow | EventTuiSessionSelect
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/publish"
+}
+
+export type TuiPublishErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type TuiPublishError = TuiPublishErrors[keyof TuiPublishErrors]
+
+export type TuiPublishResponses = {
+  /**
+   * Event published successfully
+   */
+  200: boolean
+}
+
+export type TuiPublishResponse = TuiPublishResponses[keyof TuiPublishResponses]
+
+export type TuiSelectSessionData = {
+  body?: {
+    /**
+     * Session ID to navigate to
+     */
+    sessionID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/select-session"
+}
+
+export type TuiSelectSessionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type TuiSelectSessionError = TuiSelectSessionErrors[keyof TuiSelectSessionErrors]
+
+export type TuiSelectSessionResponses = {
+  /**
+   * Session selected successfully
+   */
+  200: boolean
+}
+
+export type TuiSelectSessionResponse = TuiSelectSessionResponses[keyof TuiSelectSessionResponses]
+
+export type TuiControlNextData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/control/next"
+}
+
+export type TuiControlNextResponses = {
+  /**
+   * Next TUI request
+   */
+  200: {
+    path: string
+    body: unknown
+  }
+}
+
+export type TuiControlNextResponse = TuiControlNextResponses[keyof TuiControlNextResponses]
+
+export type TuiControlResponseData = {
+  body?: unknown
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/control/response"
+}
+
+export type TuiControlResponseResponses = {
+  /**
+   * Response submitted successfully
+   */
+  200: boolean
+}
+
+export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
 
 export type AuthSetData = {
   body?: Auth

@@ -1214,6 +1214,7 @@ export namespace LSPServer {
     id: "kotlin-ls",
     extensions: [".kt", ".kts"],
     root: async (file) => {
+<<<<<<< HEAD
           // 1) Nearest Gradle root (multi-project or included build)
           const settingsRoot = await NearestRoot(["settings.gradle.kts", "settings.gradle"])(file)
           if (settingsRoot) return settingsRoot
@@ -1225,6 +1226,19 @@ export namespace LSPServer {
           if (buildRoot) return buildRoot
           // 4) Maven fallback
           return NearestRoot(["pom.xml"])(file)
+=======
+      // 1) Nearest Gradle root (multi-project or included build)
+      const settingsRoot = await NearestRoot(["settings.gradle.kts", "settings.gradle"])(file)
+      if (settingsRoot) return settingsRoot
+      // 2) Gradle wrapper (strong root signal)
+      const wrapperRoot = await NearestRoot(["gradlew", "gradlew.bat"])(file)
+      if (wrapperRoot) return wrapperRoot
+      // 3) Single-project or module-level build
+      const buildRoot = await NearestRoot(["build.gradle.kts", "build.gradle"])(file)
+      if (buildRoot) return buildRoot
+      // 4) Maven fallback
+      return NearestRoot(["pom.xml"])(file)
+>>>>>>> 9fb24074c8708096b15e719ff6116c805d50b47f
     },
     async spawn(root) {
       const distPath = path.join(Global.Path.bin, "kotlin-ls")
@@ -1242,7 +1256,11 @@ export namespace LSPServer {
         }
 
         const release = await releaseResponse.json()
+<<<<<<< HEAD
         const version = release.name?.replace(/^v/, '')
+=======
+        const version = release.name?.replace(/^v/, "")
+>>>>>>> 9fb24074c8708096b15e719ff6116c805d50b47f
 
         if (!version) {
           log.error("Could not determine Kotlin LSP version from release")
@@ -1261,11 +1279,15 @@ export namespace LSPServer {
         else if (platform === "linux") kotlinPlatform = "linux"
         else if (platform === "win32") kotlinPlatform = "win"
 
+<<<<<<< HEAD
         const supportedCombos = [
           "mac-x64", "mac-aarch64",
           "linux-x64", "linux-aarch64",
           "win-x64", "win-aarch64"
         ]
+=======
+        const supportedCombos = ["mac-x64", "mac-aarch64", "linux-x64", "linux-aarch64", "win-x64", "win-aarch64"]
+>>>>>>> 9fb24074c8708096b15e719ff6116c805d50b47f
 
         const combo = `${kotlinPlatform}-${kotlinArch}`
 

@@ -136,11 +136,11 @@ export const SessionReview = (props: SessionReviewProps) => {
                     diffStyle={diffStyle()}
                     before={{
                       name: diff.file!,
-                      contents: diff.before!,
+                      contents: typeof diff.before === "string" ? diff.before : "",
                     }}
                     after={{
                       name: diff.file!,
-                      contents: diff.after!,
+                      contents: typeof diff.after === "string" ? diff.after : "",
                     }}
                   />
                 </Accordion.Content>

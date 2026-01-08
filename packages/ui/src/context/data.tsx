@@ -2,27 +2,6 @@ import type { Message, Session, Part, FileDiff, SessionStatus, PermissionRequest
 import { createSimpleContext } from "./helper"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
-export type AskUserQuestionRequest = {
-  id: string
-  sessionID: string
-  messageID: string
-  callID: string
-  questions: Array<{
-    question: string
-    header: string
-    options: Array<{ label: string; description: string }>
-    multiSelect: boolean
-  }>
-}
-
-export type PlanModeRequest = {
-  id: string
-  sessionID: string
-  messageID: string
-  callID: string
-  plan: string
-}
-
 type Data = {
   session: Session[]
   session_status: {
@@ -36,12 +15,6 @@ type Data = {
   }
   permission?: {
     [sessionID: string]: PermissionRequest[]
-  }
-  askuser?: {
-    [sessionID: string]: AskUserQuestionRequest[]
-  }
-  planmode?: {
-    [sessionID: string]: PlanModeRequest[]
   }
   message: {
     [sessionID: string]: Message[]
@@ -57,15 +30,7 @@ export type PermissionRespondFn = (input: {
   response: "once" | "always" | "reject"
 }) => void
 
-export type AskUserRespondFn = (input: {
-  requestID: string
-  answers: Record<string, string>
-}) => void
-
-export type PlanModeRespondFn = (input: {
-  requestID: string
-  approved: boolean
-}) => void
+export type NavigateToSessionFn = (sessionID: string) => void
 
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
@@ -73,8 +38,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     data: Data
     directory: string
     onPermissionRespond?: PermissionRespondFn
-    onAskUserRespond?: AskUserRespondFn
-    onPlanModeRespond?: PlanModeRespondFn
+    onNavigateToSession?: NavigateToSessionFn
   }) => {
     return {
       get store() {
@@ -84,8 +48,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         return props.directory
       },
       respondToPermission: props.onPermissionRespond,
-      respondToAskUser: props.onAskUserRespond,
-      respondToPlanMode: props.onPlanModeRespond,
+      navigateToSession: props.onNavigateToSession,
     }
   },
 })

@@ -7,30 +7,9 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
-  AskuserListForSessionResponses,
-  AskuserListResponses,
-  AskuserReplyErrors,
-  AskuserReplyResponses,
   Auth as Auth2,
   AuthSetErrors,
   AuthSetResponses,
-  ClaudePluginAgentsResponses,
-  ClaudePluginCommandsResponses,
-  ClaudePluginDisableErrors,
-  ClaudePluginDisableResponses,
-  ClaudePluginEnableErrors,
-  ClaudePluginEnableResponses,
-  ClaudePluginInstalledResponses,
-  ClaudePluginInstallErrors,
-  ClaudePluginInstallResponses,
-  ClaudePluginListResponses,
-  ClaudePluginMarketplaceRefreshResponses,
-  ClaudePluginMarketplaceResponses,
-  ClaudePluginMarketplaceSearchErrors,
-  ClaudePluginMarketplaceSearchResponses,
-  ClaudePluginStatsResponses,
-  ClaudePluginUninstallErrors,
-  ClaudePluginUninstallResponses,
   CommandListResponses,
   Config as Config2,
   ConfigGetResponses,
@@ -38,6 +17,10 @@ import type {
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   EventSubscribeResponses,
+  EventTuiCommandExecute,
+  EventTuiPromptAppend,
+  EventTuiSessionSelect,
+  EventTuiToastShow,
   ExperimentalResourceListResponses,
   FileListResponses,
   FilePartInput,
@@ -68,7 +51,6 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
-  MessageDiffResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -81,10 +63,6 @@ import type {
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
-  PlanmodeListForSessionResponses,
-  PlanmodeListResponses,
-  PlanmodeReplyErrors,
-  PlanmodeReplyResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -106,6 +84,11 @@ import type {
   PtyRemoveResponses,
   PtyUpdateErrors,
   PtyUpdateResponses,
+  QuestionListResponses,
+  QuestionRejectErrors,
+  QuestionRejectResponses,
+  QuestionReplyErrors,
+  QuestionReplyResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -150,17 +133,29 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
-  SessionWorktreeDeleteErrors,
-  SessionWorktreeDeleteResponses,
-  SessionWorktreeGetErrors,
-  SessionWorktreeGetResponses,
-  SkillListResponses,
   SubtaskPartInput,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
   ToolListErrors,
   ToolListResponses,
+  TuiAppendPromptErrors,
+  TuiAppendPromptResponses,
+  TuiClearPromptResponses,
+  TuiControlNextResponses,
+  TuiControlResponseResponses,
+  TuiExecuteCommandErrors,
+  TuiExecuteCommandResponses,
+  TuiOpenHelpResponses,
+  TuiOpenModelsResponses,
+  TuiOpenSessionsResponses,
+  TuiOpenThemesResponses,
+  TuiPublishErrors,
+  TuiPublishResponses,
+  TuiSelectSessionErrors,
+  TuiSelectSessionResponses,
+  TuiShowToastResponses,
+  TuiSubmitPromptResponses,
   VcsGetResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
@@ -329,327 +324,6 @@ export class Project extends HeyApiClient {
       },
     })
   }
-}
-
-export class Marketplace extends HeyApiClient {
-  /**
-   * Search marketplace
-   *
-   * Search for plugins in the marketplace.
-   */
-  public search<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      q: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "q" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      ClaudePluginMarketplaceSearchResponses,
-      ClaudePluginMarketplaceSearchErrors,
-      ThrowOnError
-    >({
-      url: "/claude-plugin/marketplace/search",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Refresh marketplace
-   *
-   * Clear the marketplace cache and fetch fresh data.
-   */
-  public refresh<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<ClaudePluginMarketplaceRefreshResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/marketplace/refresh",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class ClaudePlugin extends HeyApiClient {
-  /**
-   * List loaded plugins
-   *
-   * Get all currently loaded Claude Code plugins.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginListResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List installed plugins
-   *
-   * Get all installed Claude Code plugins, including disabled ones.
-   */
-  public installed<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginInstalledResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/installed",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List marketplace plugins
-   *
-   * Get available plugins from the Claude Code marketplace.
-   */
-  public marketplace<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginMarketplaceResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/marketplace",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Install plugin
-   *
-   * Install a plugin from the marketplace.
-   */
-  public install<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ClaudePluginInstallResponses, ClaudePluginInstallErrors, ThrowOnError>(
-      {
-        url: "/claude-plugin/install",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
-      },
-    )
-  }
-
-  /**
-   * Uninstall plugin
-   *
-   * Remove an installed plugin.
-   */
-  public uninstall<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ClaudePluginUninstallResponses,
-      ClaudePluginUninstallErrors,
-      ThrowOnError
-    >({
-      url: "/claude-plugin/uninstall",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Enable plugin
-   *
-   * Enable a disabled plugin.
-   */
-  public enable<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ClaudePluginEnableResponses, ClaudePluginEnableErrors, ThrowOnError>({
-      url: "/claude-plugin/enable",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Disable plugin
-   *
-   * Disable an enabled plugin.
-   */
-  public disable<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ClaudePluginDisableResponses, ClaudePluginDisableErrors, ThrowOnError>(
-      {
-        url: "/claude-plugin/disable",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
-      },
-    )
-  }
-
-  /**
-   * List plugin commands
-   *
-   * Get all commands from loaded plugins.
-   */
-  public commands<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginCommandsResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/commands",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List plugin agents
-   *
-   * Get all agents from loaded plugins.
-   */
-  public agents<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginAgentsResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/agents",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get plugin stats
-   *
-   * Get download statistics from the community plugin registry.
-   */
-  public stats<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ClaudePluginStatsResponses, unknown, ThrowOnError>({
-      url: "/claude-plugin/stats",
-      ...options,
-      ...params,
-    })
-  }
-
-  marketplace2 = new Marketplace({ client: this.client })
 }
 
 export class Pty extends HeyApiClient {
@@ -925,27 +599,6 @@ export class Config extends HeyApiClient {
   }
 }
 
-export class Skill extends HeyApiClient {
-  /**
-   * List skills
-   *
-   * Get a list of all available skills from project and global directories.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<SkillListResponses, unknown, ThrowOnError>({
-      url: "/skill",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Tool extends HeyApiClient {
   /**
    * List tool IDs
@@ -1118,72 +771,6 @@ export class Vcs extends HeyApiClient {
   }
 }
 
-export class SessionWorktree extends HeyApiClient {
-  /**
-   * Remove worktree
-   *
-   * Manually remove the worktree associated with a session.
-   */
-  public delete<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<
-      SessionWorktreeDeleteResponses,
-      SessionWorktreeDeleteErrors,
-      ThrowOnError
-    >({
-      url: "/session/{sessionID}/worktree",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get worktree status
-   *
-   * Get the worktree status for a session.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<SessionWorktreeGetResponses, SessionWorktreeGetErrors, ThrowOnError>({
-      url: "/session/{sessionID}/worktree",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Session extends HeyApiClient {
   /**
    * List sessions
@@ -1193,10 +780,25 @@ export class Session extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      start?: number
+      search?: string
+      limit?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "start" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<SessionListResponses, unknown, ThrowOnError>({
       url: "/session",
       ...options,
@@ -1215,8 +817,6 @@ export class Session extends HeyApiClient {
       parentID?: string
       title?: string
       permission?: PermissionRuleset
-      useWorktree?: boolean
-      worktreeCleanup?: "ask" | "always" | "never"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1229,8 +829,6 @@ export class Session extends HeyApiClient {
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
             { in: "body", key: "permission" },
-            { in: "body", key: "useWorktree" },
-            { in: "body", key: "worktreeCleanup" },
           ],
         },
       ],
@@ -1275,7 +873,6 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
-      removeWorktree?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1286,7 +883,6 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
-            { in: "query", key: "removeWorktree" },
           ],
         },
       ],
@@ -1480,8 +1076,6 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       messageID?: string
-      useWorktree?: boolean
-      worktreeCleanup?: "ask" | "always" | "never"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1493,8 +1087,6 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "body", key: "messageID" },
-            { in: "body", key: "useWorktree" },
-            { in: "body", key: "worktreeCleanup" },
           ],
         },
       ],
@@ -1602,6 +1194,38 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get session diff
+   *
+   * Get all file changes (diffs) made during this session.
+   */
+  public diff<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      messageID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionDiffResponses, SessionDiffErrors, ThrowOnError>({
+      url: "/session/{sessionID}/diff",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Summarize session
    *
    * Generate a concise summary of the session using AI compaction to preserve key information.
@@ -1695,8 +1319,6 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      thinking?: boolean
-      claudeCodeFlow?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1715,8 +1337,6 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
-            { in: "body", key: "thinking" },
-            { in: "body", key: "claudeCodeFlow" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1731,36 +1351,6 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
-    })
-  }
-
-  /**
-   * Get session diff
-   *
-   * Get all file changes (diffs) made during this session.
-   */
-  public diff<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<SessionDiffResponses, SessionDiffErrors, ThrowOnError>({
-      url: "/session/{sessionID}/diff",
-      ...options,
-      ...params,
     })
   }
 
@@ -1817,8 +1407,6 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      thinking?: boolean
-      claudeCodeFlow?: boolean
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1837,8 +1425,6 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
-            { in: "body", key: "thinking" },
-            { in: "body", key: "claudeCodeFlow" },
             { in: "body", key: "parts" },
           ],
         },
@@ -2024,42 +1610,6 @@ export class Session extends HeyApiClient {
       ...params,
     })
   }
-
-  worktree = new SessionWorktree({ client: this.client })
-}
-
-export class Message extends HeyApiClient {
-  /**
-   * Get message diff
-   *
-   * Get the file changes (diff) that resulted from a specific user message in the session.
-   */
-  public diff<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      messageID?: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "path", key: "messageID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<MessageDiffResponses, unknown, ThrowOnError>({
-      url: "/session/{sessionID}/message/{messageID}/diff",
-      ...options,
-      ...params,
-    })
-  }
 }
 
 export class Part extends HeyApiClient {
@@ -2187,6 +1737,7 @@ export class Permission extends HeyApiClient {
       requestID: string
       directory?: string
       reply?: "once" | "always" | "reject"
+      message?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2198,6 +1749,7 @@ export class Permission extends HeyApiClient {
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
             { in: "body", key: "reply" },
+            { in: "body", key: "message" },
           ],
         },
       ],
@@ -2234,19 +1786,36 @@ export class Permission extends HeyApiClient {
   }
 }
 
-export class Askuser extends HeyApiClient {
+export class Question extends HeyApiClient {
   /**
-   * Reply to AskUserQuestion
+   * List pending questions
    *
-   * Submit answers to a pending AskUserQuestion request from Claude.
+   * Get all pending question requests across all sessions.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<QuestionListResponses, unknown, ThrowOnError>({
+      url: "/question",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Reply to question request
+   *
+   * Provide answers to a question request from the AI assistant.
    */
   public reply<ThrowOnError extends boolean = false>(
     parameters: {
       requestID: string
       directory?: string
-      answers?: {
-        [key: string]: string
-      }
+      answers?: Array<string>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2262,8 +1831,8 @@ export class Askuser extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<AskuserReplyResponses, AskuserReplyErrors, ThrowOnError>({
-      url: "/askuser/{requestID}/reply",
+    return (options?.client ?? this.client).post<QuestionReplyResponses, QuestionReplyErrors, ThrowOnError>({
+      url: "/question/{requestID}/reply",
       ...options,
       ...params,
       headers: {
@@ -2275,66 +1844,14 @@ export class Askuser extends HeyApiClient {
   }
 
   /**
-   * List pending AskUserQuestion requests
+   * Reject question request
    *
-   * Get all pending AskUserQuestion requests across all sessions.
+   * Reject a question request from the AI assistant.
    */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<AskuserListResponses, unknown, ThrowOnError>({
-      url: "/askuser",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List pending AskUserQuestion for session
-   *
-   * Get pending AskUserQuestion requests for a specific session.
-   */
-  public listForSession<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<AskuserListForSessionResponses, unknown, ThrowOnError>({
-      url: "/session/{sessionID}/askuser",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Planmode extends HeyApiClient {
-  /**
-   * Reply to plan review
-   *
-   * Approve or reject a plan review request from Claude.
-   */
-  public reply<ThrowOnError extends boolean = false>(
+  public reject<ThrowOnError extends boolean = false>(
     parameters: {
       requestID: string
       directory?: string
-      approved?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2345,67 +1862,12 @@ export class Planmode extends HeyApiClient {
           args: [
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
-            { in: "body", key: "approved" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<PlanmodeReplyResponses, PlanmodeReplyErrors, ThrowOnError>({
-      url: "/planmode/{requestID}/reply",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * List pending plan reviews
-   *
-   * Get all pending plan review requests across all sessions.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<PlanmodeListResponses, unknown, ThrowOnError>({
-      url: "/planmode",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List pending plan reviews for session
-   *
-   * Get pending plan review requests for a specific session.
-   */
-  public listForSession<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<PlanmodeListForSessionResponses, unknown, ThrowOnError>({
-      url: "/session/{sessionID}/planmode",
+    return (options?.client ?? this.client).post<QuestionRejectResponses, QuestionRejectErrors, ThrowOnError>({
+      url: "/question/{requestID}/reject",
       ...options,
       ...params,
     })
@@ -3155,6 +2617,341 @@ export class Formatter extends HeyApiClient {
   }
 }
 
+export class Control extends HeyApiClient {
+  /**
+   * Get next TUI request
+   *
+   * Retrieve the next TUI (Terminal User Interface) request from the queue for processing.
+   */
+  public next<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<TuiControlNextResponses, unknown, ThrowOnError>({
+      url: "/tui/control/next",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Submit TUI response
+   *
+   * Submit a response to the TUI request queue to complete a pending request.
+   */
+  public response<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      body?: unknown
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<TuiControlResponseResponses, unknown, ThrowOnError>({
+      url: "/tui/control/response",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Tui extends HeyApiClient {
+  /**
+   * Append TUI prompt
+   *
+   * Append prompt to the TUI
+   */
+  public appendPrompt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      text?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<TuiAppendPromptResponses, TuiAppendPromptErrors, ThrowOnError>({
+      url: "/tui/append-prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Open help dialog
+   *
+   * Open the help dialog in the TUI to display user assistance information.
+   */
+  public openHelp<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiOpenHelpResponses, unknown, ThrowOnError>({
+      url: "/tui/open-help",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Open sessions dialog
+   *
+   * Open the session dialog
+   */
+  public openSessions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiOpenSessionsResponses, unknown, ThrowOnError>({
+      url: "/tui/open-sessions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Open themes dialog
+   *
+   * Open the theme dialog
+   */
+  public openThemes<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiOpenThemesResponses, unknown, ThrowOnError>({
+      url: "/tui/open-themes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Open models dialog
+   *
+   * Open the model dialog
+   */
+  public openModels<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiOpenModelsResponses, unknown, ThrowOnError>({
+      url: "/tui/open-models",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Submit TUI prompt
+   *
+   * Submit the prompt
+   */
+  public submitPrompt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiSubmitPromptResponses, unknown, ThrowOnError>({
+      url: "/tui/submit-prompt",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Clear TUI prompt
+   *
+   * Clear the prompt
+   */
+  public clearPrompt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<TuiClearPromptResponses, unknown, ThrowOnError>({
+      url: "/tui/clear-prompt",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Execute TUI command
+   *
+   * Execute a TUI command (e.g. agent_cycle)
+   */
+  public executeCommand<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      command?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "command" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<TuiExecuteCommandResponses, TuiExecuteCommandErrors, ThrowOnError>({
+      url: "/tui/execute-command",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Show TUI toast
+   *
+   * Show a toast notification in the TUI
+   */
+  public showToast<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      message?: string
+      variant?: "info" | "success" | "warning" | "error"
+      duration?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "message" },
+            { in: "body", key: "variant" },
+            { in: "body", key: "duration" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<TuiShowToastResponses, unknown, ThrowOnError>({
+      url: "/tui/show-toast",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Publish TUI event
+   *
+   * Publish a TUI event
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      body?: EventTuiPromptAppend | EventTuiCommandExecute | EventTuiToastShow | EventTuiSessionSelect
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<TuiPublishResponses, TuiPublishErrors, ThrowOnError>({
+      url: "/tui/publish",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Select session
+   *
+   * Navigate the TUI to display the specified session.
+   */
+  public selectSession<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<TuiSelectSessionResponses, TuiSelectSessionErrors, ThrowOnError>({
+      url: "/tui/select-session",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  control = new Control({ client: this.client })
+}
+
 export class Event extends HeyApiClient {
   /**
    * Subscribe to events
@@ -3188,13 +2985,9 @@ export class OpencodeClient extends HeyApiClient {
 
   project = new Project({ client: this.client })
 
-  claudePlugin = new ClaudePlugin({ client: this.client })
-
   pty = new Pty({ client: this.client })
 
   config = new Config({ client: this.client })
-
-  skill = new Skill({ client: this.client })
 
   tool = new Tool({ client: this.client })
 
@@ -3208,15 +3001,11 @@ export class OpencodeClient extends HeyApiClient {
 
   session = new Session({ client: this.client })
 
-  message = new Message({ client: this.client })
-
   part = new Part({ client: this.client })
 
   permission = new Permission({ client: this.client })
 
-  askuser = new Askuser({ client: this.client })
-
-  planmode = new Planmode({ client: this.client })
+  question = new Question({ client: this.client })
 
   command = new Command({ client: this.client })
 
@@ -3236,8 +3025,9 @@ export class OpencodeClient extends HeyApiClient {
 
   formatter = new Formatter({ client: this.client })
 
+  tui = new Tui({ client: this.client })
+
   auth = new Auth({ client: this.client })
 
   event = new Event({ client: this.client })
 }
-

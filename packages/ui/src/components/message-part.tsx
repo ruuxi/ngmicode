@@ -36,8 +36,6 @@ import { Checkbox } from "./checkbox"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
-import { AskUserQuestion } from "./ask-user-question"
-import { PlanReview } from "./plan-review"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { createAutoScroll } from "../hooks"
@@ -173,17 +171,12 @@ export type ToolInfo = {
 }
 
 export function getToolInfo(tool: string, input: any = {}): ToolInfo {
-  // Helper to get property with both camelCase and snake_case support
-  const get = (camel: string, snake: string) => input[camel] ?? input[snake]
-  const filePath = get("filePath", "file_path")
-  const subagentType = get("subagentType", "subagent_type")
-
-  switch (tool.toLowerCase()) {
+  switch (tool) {
     case "read":
       return {
         icon: "glasses",
         title: "Read",
-        subtitle: filePath ? getFilename(filePath) : undefined,
+        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "list":
       return {
@@ -212,7 +205,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
     case "task":
       return {
         icon: "task",
-        title: `${subagentType || "task"} Agent`,
+        title: `${input.subagent_type || "task"} Agent`,
         subtitle: input.description,
       }
     case "bash":
@@ -225,23 +218,14 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       return {
         icon: "code-lines",
         title: "Edit",
-        subtitle: filePath ? getFilename(filePath) : undefined,
+        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "write":
       return {
         icon: "code-lines",
         title: "Write",
-        subtitle: filePath ? getFilename(filePath) : undefined,
+        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
-    case "patch": {
-      const files = Array.isArray(input.files) ? input.files : []
-      const first = typeof files[0] === "string" ? files[0] : undefined
-      return {
-        icon: "code-lines",
-        title: "Patch",
-        subtitle: first ? getFilename(first) : undefined,
-      }
-    }
     case "todowrite":
       return {
         icon: "checklist",
@@ -439,8 +423,6 @@ export interface ToolProps {
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
-  sessionID?: string
-  callID?: string
 }
 
 export type ToolComponent = Component<ToolProps>
@@ -459,8 +441,7 @@ export function registerTool(input: { name: string; render?: ToolComponent }) {
 }
 
 export function getTool(name: string) {
-  // Try exact match first, then lowercase for Claude Code compatibility
-  return state[name]?.render ?? state[name.toLowerCase()]?.render
+  return state[name]?.render
 }
 
 export const ToolRegistry = {
@@ -554,8 +535,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             hideDetails={props.hideDetails}
             forceOpen={forceOpen()}
             defaultOpen={props.defaultOpen}
-            sessionID={props.message.sessionID}
-            callID={part.callID}
           />
         </Match>
       </Switch>
@@ -607,15 +586,9 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   )
 }
 
-// Helper to get property with both camelCase and snake_case support (for Claude Code compatibility)
-function getInputProp(input: Record<string, any>, camel: string, snake: string) {
-  return input[camel] ?? input[snake]
-}
-
 ToolRegistry.register({
   name: "read",
   render(props) {
-    const filePath = getInputProp(props.input, "filePath", "file_path")
     const args: string[] = []
     if (props.input.offset) args.push("offset=" + props.input.offset)
     if (props.input.limit) args.push("limit=" + props.input.limit)
@@ -625,7 +598,7 @@ ToolRegistry.register({
         icon="glasses"
         trigger={{
           title: "Read",
-          subtitle: filePath ? getFilename(filePath) : "",
+          subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
           args,
         }}
       />
@@ -786,6 +759,13 @@ ToolRegistry.register({
       })
     }
 
+    const handleSubtitleClick = () => {
+      const sessionId = childSessionId()
+      if (sessionId && data.navigateToSession) {
+        data.navigateToSession(sessionId)
+      }
+    }
+
     const renderChildToolPart = () => {
       const toolData = childToolPart()
       if (!toolData) return null
@@ -820,10 +800,11 @@ ToolRegistry.register({
                     icon="task"
                     defaultOpen={true}
                     trigger={{
-                      title: `${getInputProp(props.input, "subagentType", "subagent_type") || props.tool} Agent`,
+                      title: `${props.input.subagent_type || props.tool} Agent`,
                       titleClass: "capitalize",
                       subtitle: props.input.description,
                     }}
+                    onSubtitleClick={handleSubtitleClick}
                   />
                 }
               >
@@ -849,10 +830,11 @@ ToolRegistry.register({
               icon="task"
               defaultOpen={true}
               trigger={{
-                title: `${getInputProp(props.input, "subagentType", "subagent_type") || props.tool} Agent`,
+                title: `${props.input.subagent_type || props.tool} Agent`,
                 titleClass: "capitalize",
                 subtitle: props.input.description,
               }}
+              onSubtitleClick={handleSubtitleClick}
             >
               <div
                 ref={autoScroll.scrollRef}
@@ -911,10 +893,7 @@ ToolRegistry.register({
   name: "edit",
   render(props) {
     const diffComponent = useDiffComponent()
-    const filePath = getInputProp(props.input, "filePath", "file_path")
-    const oldString = getInputProp(props.input, "oldString", "old_string")
-    const newString = getInputProp(props.input, "newString", "new_string")
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, filePath))
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     return (
       <BasicTool
         {...props}
@@ -924,10 +903,10 @@ ToolRegistry.register({
             <div data-slot="message-part-title-area">
               <div data-slot="message-part-title">Edit</div>
               <div data-slot="message-part-path">
-                <Show when={filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(filePath!)}</span>
+                <Show when={props.input.filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
                 </Show>
-                <span data-slot="message-part-filename">{getFilename(filePath ?? "")}</span>
+                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
             </div>
             <div data-slot="message-part-actions">
@@ -938,17 +917,17 @@ ToolRegistry.register({
           </div>
         }
       >
-        <Show when={props.metadata.filediff?.path || filePath}>
+        <Show when={props.metadata.filediff?.path || props.input.filePath}>
           <div data-component="edit-content">
             <Dynamic
               component={diffComponent}
               before={{
-                name: props.metadata?.filediff?.file || filePath,
-                contents: props.metadata?.filediff?.before || oldString,
+                name: props.metadata?.filediff?.file || props.input.filePath,
+                contents: props.metadata?.filediff?.before || props.input.oldString,
               }}
               after={{
-                name: props.metadata?.filediff?.file || filePath,
-                contents: props.metadata?.filediff?.after || newString,
+                name: props.metadata?.filediff?.file || props.input.filePath,
+                contents: props.metadata?.filediff?.after || props.input.newString,
               }}
             />
           </div>
@@ -963,9 +942,7 @@ ToolRegistry.register({
   name: "write",
   render(props) {
     const codeComponent = useCodeComponent()
-    const filePath = getInputProp(props.input, "filePath", "file_path")
-    const content = props.input.content
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, filePath))
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     return (
       <BasicTool
         {...props}
@@ -975,90 +952,30 @@ ToolRegistry.register({
             <div data-slot="message-part-title-area">
               <div data-slot="message-part-title">Write</div>
               <div data-slot="message-part-path">
-                <Show when={filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(filePath!)}</span>
+                <Show when={props.input.filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
                 </Show>
-                <span data-slot="message-part-filename">{getFilename(filePath ?? "")}</span>
+                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
             </div>
             <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
           </div>
         }
       >
-        <Show when={content}>
+        <Show when={props.input.content}>
           <div data-component="write-content">
             <Dynamic
               component={codeComponent}
               file={{
-                name: filePath,
-                contents: content,
-                cacheKey: checksum(content),
+                name: props.input.filePath,
+                contents: props.input.content,
+                cacheKey: checksum(props.input.content),
               }}
               overflow="scroll"
             />
           </div>
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "patch",
-  render(props) {
-    const changes = createMemo(() => (Array.isArray(props.metadata.changes) ? props.metadata.changes : []))
-    const fileList = createMemo(() => {
-      const inputFiles = Array.isArray(props.input.files) ? props.input.files : []
-      const direct = inputFiles.filter((file): file is string => typeof file === "string")
-      if (direct.length > 0) return direct
-      return changes()
-        .map((change) => (change && typeof change.file === "string" ? change.file : ""))
-        .filter((file) => file.length > 0)
-    })
-    const firstFile = createMemo(() => fileList()[0])
-    const extraCount = createMemo(() => Math.max(0, fileList().length - 1))
-    const diff = createMemo(() => {
-      const metadataDiff = props.metadata.diff
-      if (typeof metadataDiff === "string" && metadataDiff.trim().length > 0) return metadataDiff
-      const output = props.output
-      if (typeof output === "string" && output.trim().length > 0) return output
-      return ""
-    })
-
-    return (
-      <BasicTool
-        {...props}
-        icon="code-lines"
-        trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Patch</div>
-              <div data-slot="message-part-path">
-                <Show when={firstFile()?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(firstFile())}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(firstFile() ?? "")}</span>
-                <Show when={extraCount() > 0}>
-                  <span data-slot="message-part-filename">+{extraCount()}</span>
-                </Show>
-              </div>
-            </div>
-            <div data-slot="message-part-actions">
-              <Show when={changes().length > 0}>
-                <DiffChanges changes={changes()} />
-              </Show>
-            </div>
-          </div>
-        }
-      >
-        <Show when={diff()}>
-          {(text) => (
-            <div data-component="tool-output" data-scrollable>
-              <Markdown text={`\`\`\`diff\n${text()}\n\`\`\``} />
-            </div>
-          )}
-        </Show>
       </BasicTool>
     )
   },
@@ -1096,19 +1013,3 @@ ToolRegistry.register({
     )
   },
 })
-
-ToolRegistry.register({
-  name: "AskUserQuestion",
-  render(props) {
-    return <AskUserQuestion {...props} />
-  },
-})
-
-ToolRegistry.register({
-  name: "ExitPlanMode",
-  render(props) {
-    return <PlanReview {...props} />
-  },
-})
-
-
