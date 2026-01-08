@@ -1,4 +1,4 @@
-import { Show, createMemo, onMount, createEffect, on, createSignal } from "solid-js"
+import { Show, createMemo, onMount, createEffect, on, createSignal, type JSX } from "solid-js"
 import { useSearchParams } from "@solidjs/router"
 import { MultiPaneProvider, useMultiPane } from "@/context/multi-pane"
 import { PaneGrid } from "@/components/pane-grid"
@@ -19,6 +19,7 @@ import { DragDropProvider, DragDropSensors, DragOverlay, closestCenter } from "@
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { getDraggableId } from "@/utils/solid-dnd"
 import { ShiftingGradient, GRAIN_DATA_URI } from "@/components/shifting-gradient"
+import { useTheme } from "@opencode-ai/ui/theme"
 import { MultiPanePromptPanel } from "@/components/multi-pane/prompt-panel"
 import { MultiPaneKanbanView } from "@/components/multi-pane/kanban-view"
 import { PaneHome } from "@/components/multi-pane/pane-home"
@@ -161,10 +162,29 @@ function MultiPaneContent() {
   const multiPane = useMultiPane()
   const layout = useLayout()
   const globalSync = useGlobalSync()
+  const theme = useTheme()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activePaneDraggable, setActivePaneDraggable] = createSignal<string | undefined>(undefined)
   const dragOverlayBackground = "hsl(from var(--background-base) h s l / 0.7)"
   const overlayBackground = "hsl(from var(--background-base) h s l / 0.6)"
+
+  const isCrisp = () => theme.gradientMode() === "crisp"
+  const backdropStyle = (): JSX.CSSProperties => {
+    const blur = isCrisp() ? "blur(4px)" : "blur(24px) saturate(1.05)"
+    return {
+      "background-color": overlayBackground,
+      "backdrop-filter": blur,
+      "-webkit-backdrop-filter": blur,
+    }
+  }
+  const grainStyle = (): JSX.CSSProperties => ({
+    "background-image": `url("${GRAIN_DATA_URI}")`,
+    "background-repeat": "repeat",
+    "background-size": "120px 120px",
+    "mix-blend-mode": "soft-light",
+    filter: "contrast(180%)",
+    opacity: isCrisp() ? "0.65" : "0.24",
+  })
 
   const visiblePanes = createMemo(() => multiPane.visiblePanes())
   const hasPanes = createMemo(() => multiPane.panes().length > 0)
@@ -274,23 +294,9 @@ function MultiPaneContent() {
       <ShiftingGradient class="z-0" />
       <div
         class="absolute inset-0 pointer-events-none z-10"
-        style={{
-          "background-color": overlayBackground,
-          "backdrop-filter": "blur(24px) saturate(1.05)",
-          "-webkit-backdrop-filter": "blur(24px) saturate(1.05)",
-        }}
+        style={backdropStyle()}
       >
-        <div
-          class="absolute inset-0"
-          style={{
-            "background-image": `url("${GRAIN_DATA_URI}")`,
-            "background-repeat": "repeat",
-            "background-size": "120px 120px",
-            "mix-blend-mode": "soft-light",
-            filter: "contrast(180%)",
-            opacity: "0.24",
-          }}
-        />
+        <div class="absolute inset-0" style={grainStyle()} />
       </div>
       <div class="relative z-20 flex-1 min-h-0 flex flex-col">
         <Show
@@ -337,27 +343,29 @@ function MultiPaneContent() {
                             />
                           }
                         >
-                          <SDKProvider directory={pane.directory!}>
-                            <SyncProvider>
-                              <PaneSyncedProviders paneId={pane.id} directory={pane.directory!}>
-                                <SessionPane
-                                  mode="multi"
-                                  paneId={pane.id}
-                                  directory={pane.directory!}
-                                  sessionId={pane.sessionId!}
-                                  isFocused={isFocused}
-                                  reviewMode="global"
-                                  onSessionChange={(sessionId: string | undefined) =>
-                                    multiPane.updatePane(pane.id, { sessionId })
-                                  }
-                                  onDirectoryChange={(dir: string) =>
-                                    multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })
-                                  }
-                                  onClose={() => multiPane.removePane(pane.id)}
-                                />
-                              </PaneSyncedProviders>
-                            </SyncProvider>
-                          </SDKProvider>
+                          {(_) => (
+                            <SDKProvider directory={pane.directory!}>
+                              <SyncProvider>
+                                <PaneSyncedProviders paneId={pane.id} directory={pane.directory!}>
+                                  <SessionPane
+                                    mode="multi"
+                                    paneId={pane.id}
+                                    directory={pane.directory!}
+                                    sessionId={pane.sessionId!}
+                                    isFocused={isFocused}
+                                    reviewMode="global"
+                                    onSessionChange={(sessionId: string | undefined) =>
+                                      multiPane.updatePane(pane.id, { sessionId })
+                                    }
+                                    onDirectoryChange={(dir: string) =>
+                                      multiPane.updatePane(pane.id, { directory: dir, sessionId: undefined })
+                                    }
+                                    onClose={() => multiPane.removePane(pane.id)}
+                                  />
+                                </PaneSyncedProviders>
+                              </SyncProvider>
+                            </SDKProvider>
+                          )}
                         </Show>
                       )
                     }}

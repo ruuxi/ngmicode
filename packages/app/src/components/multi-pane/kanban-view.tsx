@@ -210,15 +210,17 @@ function PaneSidePanel() {
               />
             }
           >
-            <SDKProvider directory={pane().directory!}>
-              <SyncProvider>
-                <SidePanelSynced
-                  paneId={pane().id}
-                  directory={pane().directory!}
-                  sessionId={pane().sessionId!}
-                />
-              </SyncProvider>
-            </SDKProvider>
+            {(_) => (
+              <SDKProvider directory={pane().directory!}>
+                <SyncProvider>
+                  <SidePanelSynced
+                    paneId={pane().id}
+                    directory={pane().directory!}
+                    sessionId={pane().sessionId!}
+                  />
+                </SyncProvider>
+              </SDKProvider>
+            )}
           </Show>
         )}
       </Show>
