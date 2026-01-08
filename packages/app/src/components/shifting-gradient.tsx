@@ -160,7 +160,7 @@ export function ShiftingGradient(props: { class?: string }) {
 
   createEffect(
     on(
-      () => [theme.themeId(), theme.mode(), theme.gradientMode(), theme.gradientColor()],
+      () => [theme.themeId(), theme.mode(), theme.gradientMode(), theme.gradientColor(), theme.previewThemeId()],
       () => {
         const palette = readPalette(theme.mode(), isRelative())
         setStore("palette", palette)

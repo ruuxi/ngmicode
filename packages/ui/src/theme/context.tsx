@@ -160,6 +160,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mode: () => store.mode,
       gradientMode: () => store.gradientMode,
       gradientColor: () => store.gradientColor,
+      previewThemeId: () => store.previewThemeId,
       themes: () => store.themes,
       setTheme,
       setColorScheme,
