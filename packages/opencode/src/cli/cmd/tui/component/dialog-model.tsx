@@ -15,7 +15,7 @@ export function useConnected() {
   )
 }
 
-export function DialogModel(props: { providerID?: string }) {
+export function DialogModel(props: { providerID?: string; providerIDs?: string[] }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
@@ -24,6 +24,15 @@ export function DialogModel(props: { providerID?: string }) {
 
   const connected = useConnected()
   const providers = createDialogProviderOptions()
+  const allowedProviders = createMemo(() => {
+    if (props.providerIDs && props.providerIDs.length > 0) return new Set(props.providerIDs)
+    if (props.providerID) return new Set([props.providerID])
+  })
+  const allowProvider = (providerID: string) => {
+    const allowed = allowedProviders()
+    if (!allowed) return true
+    return allowed.has(providerID)
+  }
 
   const showExtra = createMemo(() => {
     if (!connected()) return false
@@ -43,6 +52,7 @@ export function DialogModel(props: { providerID?: string }) {
       : []
 
     const favoriteOptions = favorites.flatMap((item) => {
+      if (!allowProvider(item.providerID)) return []
       const provider = sync.data.provider.find((x) => x.id === item.providerID)
       if (!provider) return []
       const model = provider.models[item.modelID]
@@ -74,6 +84,7 @@ export function DialogModel(props: { providerID?: string }) {
     })
 
     const recentOptions = recentList.flatMap((item) => {
+      if (!allowProvider(item.providerID)) return []
       const provider = sync.data.provider.find((x) => x.id === item.providerID)
       if (!provider) return []
       const model = provider.models[item.modelID]
@@ -115,7 +126,7 @@ export function DialogModel(props: { providerID?: string }) {
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
-          filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
+          filter(([_, info]) => allowProvider(info.providerID)),
           map(([model, info]) => {
             const value = {
               providerID: provider.id,

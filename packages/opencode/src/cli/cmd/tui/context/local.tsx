@@ -90,10 +90,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })
 
     function isModelValid(model: { providerID: string; modelID: string }) {
-      const override = mode.providerOverride()
-      if (override && model.providerID !== override) return false
       const provider = sync.data.provider.find((x) => x.id === model.providerID)
-      return !!provider?.models[model.modelID]
+      if (!provider?.models[model.modelID]) return false
+
+      const override = mode.providerOverride()
+      if (!override) return true
+      if (model.providerID === override) return true
+      if (mode.current().id === "claude-code" && model.providerID === "openrouter") return true
+      return false
     }
 
     function getFirstValidModel(...modelFns: (() => { providerID: string; modelID: string } | undefined)[]) {
@@ -105,12 +109,29 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     const agent = iife(() => {
-      const baseList = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
-      const agents = createMemo(() => Mode.filterAgents(baseList(), mode.current()))
+      const agents = createMemo(() => {
+        const active = mode.current()
+        const allowed = active?.allowedAgents?.length ? new Set(active.allowedAgents) : undefined
+        const candidates = sync.data.agent
+        const visible = allowed
+          ? candidates.filter((agent) => allowed.has(agent.name))
+          : candidates.filter((agent) => agent.mode !== "subagent" && !agent.hidden)
+
+        if (active?.id === "opencode" || active?.id === "claude-code" || active?.id === "codex") {
+          for (const name of ["build", "plan"]) {
+            const agent = candidates.find((item) => item.name === name)
+            if (agent && !visible.some((item) => item.name === name)) {
+              visible.push(agent)
+            }
+          }
+        }
+
+        return Mode.filterAgents(visible, active)
+      })
       const [agentStore, setAgentStore] = createStore<{
-        current: string
+        current?: string
       }>({
-        current: agents()[0]?.name ?? baseList()[0]?.name ?? "build",
+        current: agents()[0]?.name,
       })
       const { theme } = useTheme()
       const colors = createMemo(() => [
@@ -127,28 +148,37 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         current() {
           const list = agents()
-          const match = list.find((x) => x.name === agentStore.current)
-          if (match) return match
-          const first = list[0]
-          if (!first) return baseList()[0]!
-          setAgentStore("current", first.name)
-          return first
+          if (list.length === 0) return
+          return list.find((x) => x.name === agentStore.current) ?? list[0]
         },
         set(name: string) {
-          if (!agents().some((x) => x.name === name))
+          const list = agents()
+          if (list.length === 0) {
+            setAgentStore("current", undefined)
             return toast.show({
               variant: "warning",
               message: `Agent not found: ${name}`,
               duration: 3000,
             })
+          }
+          if (!list.some((x) => x.name === name)) {
+            setAgentStore("current", list[0]?.name)
+            return
+          }
           setAgentStore("current", name)
         },
         move(direction: 1 | -1) {
           batch(() => {
-            let next = agents().findIndex((x) => x.name === agentStore.current) + direction
-            if (next < 0) next = agents().length - 1
-            if (next >= agents().length) next = 0
-            const value = agents()[next]
+            const list = agents()
+            if (list.length === 0) {
+              setAgentStore("current", undefined)
+              return
+            }
+            let next = list.findIndex((x) => x.name === agentStore.current) + direction
+            if (next < 0) next = list.length - 1
+            if (next >= list.length) next = 0
+            const value = list[next]
+            if (!value) return
             setAgentStore("current", value.name)
           })
         },
@@ -271,13 +301,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const currentModel = createMemo(() => {
         const a = agent.current()
-        return (
-          getFirstValidModel(
-            () => modelStore.model[a.name],
-            () => a.model,
-            fallbackModel,
-          ) ?? undefined
-        )
+        if (!a) return
+        return getFirstValidModel(() => modelStore.model[a.name], () => a.model, fallbackModel)
       })
 
       return {
@@ -319,7 +344,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
-          setModelStore("model", agent.current().name, { ...val })
+          const currentAgent = agent.current()
+          if (!currentAgent) return
+          setModelStore("model", currentAgent.name, { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
@@ -345,7 +372,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
-          setModelStore("model", agent.current().name, { ...next })
+          const currentAgent = agent.current()
+          if (!currentAgent) return
+          setModelStore("model", currentAgent.name, { ...next })
           const uniq = uniqueBy([next, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
           if (uniq.length > 10) uniq.pop()
           setModelStore(
@@ -364,7 +393,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            setModelStore("model", agent.current().name, model)
+            const currentAgent = agent.current()
+            if (!currentAgent) return
+            setModelStore("model", currentAgent.name, model)
             if (options?.recent) {
               const uniq = uniqueBy([model, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
               if (uniq.length > 10) uniq.pop()

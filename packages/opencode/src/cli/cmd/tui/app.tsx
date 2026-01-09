@@ -183,6 +183,22 @@ function App() {
   const exit = useExit()
   const promptRef = usePromptRef()
 
+  const cycleMode = (direction: 1 | -1) => {
+    const list = local.mode.list().filter((item) => local.mode.isAvailable(item))
+    if (list.length <= 1) return
+    const current = local.mode.current().id
+    const index = list.findIndex((item) => item.id === current)
+    const base = index === -1 ? 0 : index + direction
+    const wrapped = ((base % list.length) + list.length) % list.length
+    const next = list[wrapped]
+    local.mode.set(next.id)
+  }
+  const resolveModelProviders = () => {
+    const active = local.mode.current()
+    if (active.id === "claude-code") return ["claude-agent", "openrouter"]
+    if (active.providerOverride) return [active.providerOverride]
+  }
+
   // Wire up console copy-to-clipboard via opentui's onCopySelection callback
   renderer.console.onCopySelection = async (text: string) => {
     if (!text || text.length === 0) return
@@ -316,7 +332,9 @@ function App() {
       suggested: true,
       category: "Agent",
       onSelect: () => {
-        dialog.replace(() => <DialogModel providerID={local.mode.providerOverride() ?? undefined} />)
+        const providerIDs = resolveModelProviders()
+        const providerID = providerIDs && providerIDs.length === 1 ? providerIDs[0] : undefined
+        dialog.replace(() => <DialogModel providerID={providerID} providerIDs={providerIDs} />)
       },
     },
     {
@@ -394,13 +412,13 @@ function App() {
       },
     },
     {
-      title: "Agent cycle reverse",
+      title: "Mode cycle",
       value: "agent.cycle.reverse",
       keybind: "agent_cycle_reverse",
       category: "Agent",
       disabled: true,
       onSelect: () => {
-        local.agent.move(-1)
+        cycleMode(1)
       },
     },
     {

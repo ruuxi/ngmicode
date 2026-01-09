@@ -646,6 +646,10 @@ export namespace Provider {
 
     // Add Claude Agent provider (uses Anthropic Agent SDK)
     database["claude-agent"] = ClaudeAgent.PROVIDER
+    mergeProvider("claude-agent", { source: "custom" })
+
+    // Always include Codex provider in the list (may still require login to use).
+    mergeProvider("codex", { source: "custom" })
 
     const codexAccount = await CodexProvider.account()
     const codexReady = codexAccount
