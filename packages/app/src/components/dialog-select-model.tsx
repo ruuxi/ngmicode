@@ -1,9 +1,10 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
 import { Component, createMemo, createSignal, For, JSX, Show } from "solid-js"
-import { useLocal } from "@/context/local"
+import { useLocal, type LocalModel } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { Tag } from "@opencode-ai/ui/tag"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
@@ -16,10 +17,14 @@ const ModelList: Component<{
   provider?: string
   class?: string
   onSelect: () => void
+  showSearch?: boolean
+  showFavorites?: boolean
 }> = (props) => {
   const local = useLocal()
   const isClaudeCodeMode = createMemo(() => local.mode.current()?.id === "claude-code")
   const isCodexMode = createMemo(() => local.mode.current()?.id === "codex")
+  const isOpencodeMode = createMemo(() => local.mode.current()?.id === "opencode")
+  const [hoveredModel, setHoveredModel] = createSignal<string | null>(null)
 
   const models = createMemo(() =>
     local.model
@@ -43,18 +48,66 @@ const ModelList: Component<{
       .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
   )
 
+  // Get recent models (up to 5)
+  const recentModels = createMemo(() => local.model.recent().slice(0, 5))
+
+  // Sort models: favorites first, then recent, then alphabetical by provider
+  const sortedModels = createMemo(() => {
+    const allModels = models()
+    const favSet = new Set<string>()
+    const recentSet = new Set<string>()
+
+    // Build favorite set
+    for (const m of allModels) {
+      if (local.model.favorite({ modelID: m.id, providerID: m.provider.id })) {
+        favSet.add(`${m.provider.id}:${m.id}`)
+      }
+    }
+
+    // Build recent set (excluding favorites)
+    for (const r of recentModels()) {
+      if (!r) continue
+      const key = `${r.provider.id}:${r.id}`
+      if (!favSet.has(key)) {
+        recentSet.add(key)
+      }
+    }
+
+    return allModels.slice().sort((a, b) => {
+      const aKey = `${a.provider.id}:${a.id}`
+      const bKey = `${b.provider.id}:${b.id}`
+      const aFav = favSet.has(aKey)
+      const bFav = favSet.has(bKey)
+      const aRecent = recentSet.has(aKey)
+      const bRecent = recentSet.has(bKey)
+
+      // Favorites first
+      if (aFav && !bFav) return -1
+      if (!aFav && bFav) return 1
+
+      // Then recent
+      if (aRecent && !bRecent) return -1
+      if (!aRecent && bRecent) return 1
+
+      // Then alphabetical
+      return a.name.localeCompare(b.name)
+    })
+  })
+
+  const shouldShowSearch = () => props.showSearch ?? true
+
   return (
     <List
       class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: "Search models", autofocus: true }}
+      search={shouldShowSearch() ? { placeholder: "Search models", autofocus: true } : undefined}
       emptyMessage="No model results"
       key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
+      items={props.showFavorites ? sortedModels : models}
       current={local.model.current()}
       filterKeys={["provider.name", "name", "id"]}
-      sortBy={(a, b) => a.name.localeCompare(b.name)}
-      groupBy={(x) => x.provider.name}
-      sortGroupsBy={(a, b) => {
+      sortBy={props.showFavorites ? undefined : (a, b) => a.name.localeCompare(b.name)}
+      groupBy={props.showFavorites ? undefined : (x) => x.provider.name}
+      sortGroupsBy={props.showFavorites ? undefined : (a, b) => {
         if (a.category === "Recent" && b.category !== "Recent") return -1
         if (b.category === "Recent" && a.category !== "Recent") return 1
         const aProvider = a.items[0].provider.id
@@ -70,17 +123,55 @@ const ModelList: Component<{
         props.onSelect()
       }}
     >
-      {(i) => (
-        <div class="w-full flex items-center gap-x-2 text-13-regular">
-          <span class="truncate">{i.name}</span>
-          <Show when={i.provider.id === "opencode" && (!i.cost || i.cost?.input === 0)}>
-            <Tag>Free</Tag>
-          </Show>
-          <Show when={i.latest}>
-            <Tag>Latest</Tag>
-          </Show>
-        </div>
-      )}
+      {(i) => {
+        const modelKey = () => `${i.provider.id}:${i.id}`
+        const isFavorite = () => local.model.favorite({ modelID: i.id, providerID: i.provider.id })
+        const isHovered = () => hoveredModel() === modelKey()
+
+        return (
+          <div
+            class="w-full flex items-center gap-x-2 text-13-regular group"
+            onMouseEnter={() => setHoveredModel(modelKey())}
+            onMouseLeave={() => setHoveredModel(null)}
+          >
+            <Show when={props.showFavorites}>
+              <button
+                type="button"
+                class="size-4 flex items-center justify-center shrink-0 -ml-1"
+                classList={{
+                  "opacity-0 group-hover:opacity-100": !isFavorite(),
+                  "opacity-100": isFavorite(),
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  local.model.toggleFavorite({ modelID: i.id, providerID: i.provider.id })
+                }}
+                title={isFavorite() ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Icon
+                  name="check"
+                  class="size-3.5"
+                  classList={{
+                    "text-icon-success-base": isFavorite(),
+                    "text-icon-weak-base hover:text-icon-base": !isFavorite(),
+                  }}
+                />
+              </button>
+            </Show>
+            <span class="truncate">{i.name}</span>
+            <Show when={props.showFavorites}>
+              <span class="text-11-regular text-text-weak truncate">{i.provider.name}</span>
+            </Show>
+            <Show when={i.provider.id === "opencode" && (!i.cost || i.cost?.input === 0)}>
+              <Tag>Free</Tag>
+            </Show>
+            <Show when={i.latest}>
+              <Tag>Latest</Tag>
+            </Show>
+          </div>
+        )
+      }}
     </List>
   )
 }
@@ -212,9 +303,10 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     )
   }
 
+  // OpenCode mode: show search bar (replaces title), favorites, and recent
   return (
     <Dialog
-      title="Select model"
+      title=""
       action={
         <Button
           class="h-7 -my-1 text-14-medium"
@@ -226,7 +318,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         </Button>
       }
     >
-      <ModelList provider={props.provider} onSelect={() => dialog.close()} />
+      <ModelList provider={props.provider} onSelect={() => dialog.close()} showSearch showFavorites />
       <Button
         variant="ghost"
         class="ml-3 mt-5 mb-6 text-text-base self-start"

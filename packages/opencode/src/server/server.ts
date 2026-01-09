@@ -28,6 +28,7 @@ import { Agent } from "../agent/agent"
 import { Auth } from "../auth"
 import { Command } from "../command"
 import { ProviderAuth } from "../provider/auth"
+import { ProviderRouting } from "../provider/routing"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
 import { ClaudePluginRoute } from "@/claude-plugin/route"
@@ -3074,6 +3075,49 @@ export namespace Server {
           return c.json(true)
         },
       )
+      .get(
+        "/auth/:providerID",
+        describeRoute({
+          summary: "Get auth credentials",
+          description: "Get authentication credentials for a provider (API key is masked)",
+          operationId: "auth.get",
+          responses: {
+            200: {
+              description: "Auth credentials (masked)",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        type: z.enum(["api", "oauth", "wellknown"]),
+                        masked: z.string().optional(),
+                        key: z.string().optional(),
+                      })
+                      .optional(),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const auth = await Auth.get(providerID)
+          if (!auth) return c.json(null)
+          if (auth.type === "api") {
+            const key = auth.key
+            const masked = key.length > 8 ? key.slice(0, 4) + "•".repeat(key.length - 8) + key.slice(-4) : "•".repeat(key.length)
+            return c.json({ type: auth.type, masked, key })
+          }
+          return c.json({ type: auth.type })
+        },
+      )
       .put(
         "/auth/:providerID",
         describeRoute({
@@ -3104,6 +3148,115 @@ export namespace Server {
           const info = c.req.valid("json")
           await Auth.set(providerID, info)
           return c.json(true)
+        },
+      )
+      .get(
+        "/provider/:providerID/routing",
+        describeRoute({
+          summary: "Get provider routing settings",
+          description: "Get routing settings for meta-providers like OpenRouter or Vercel AI Gateway",
+          operationId: "provider.routing.get",
+          responses: {
+            200: {
+              description: "Provider routing settings",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        order: z.array(z.string()).optional(),
+                        allow_fallbacks: z.boolean().optional(),
+                        require_parameters: z.boolean().optional(),
+                        data_collection: z.enum(["allow", "deny"]).optional(),
+                        only: z.array(z.string()).optional(),
+                      })
+                      .optional(),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const settings = await ProviderRouting.get(providerID)
+          return c.json(settings ?? null)
+        },
+      )
+      .put(
+        "/provider/:providerID/routing",
+        describeRoute({
+          summary: "Set provider routing settings",
+          description: "Set routing settings for meta-providers like OpenRouter or Vercel AI Gateway",
+          operationId: "provider.routing.set",
+          responses: {
+            200: {
+              description: "Successfully set routing settings",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: z.enum(["openrouter", "vercel"]),
+          }),
+        ),
+        validator(
+          "json",
+          z.object({
+            order: z.array(z.string()).optional(),
+            allow_fallbacks: z.boolean().optional(),
+            require_parameters: z.boolean().optional(),
+            data_collection: z.enum(["allow", "deny"]).optional(),
+            only: z.array(z.string()).optional(),
+          }),
+        ),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const settings = c.req.valid("json")
+          await ProviderRouting.set(providerID, settings)
+          return c.json(true)
+        },
+      )
+      .get(
+        "/provider/routing/providers",
+        describeRoute({
+          summary: "Get available routing providers",
+          description: "Get the list of available providers for routing configuration",
+          operationId: "provider.routing.providers",
+          responses: {
+            200: {
+              description: "Available providers for routing",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      openrouter: z.array(z.string()),
+                      vercel: z.array(z.string()),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({
+            openrouter: [...ProviderRouting.OPENROUTER_PROVIDERS],
+            vercel: [...ProviderRouting.VERCEL_GATEWAY_PROVIDERS],
+          })
         },
       )
       .get(
