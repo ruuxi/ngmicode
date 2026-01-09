@@ -53,6 +53,7 @@ import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { DialogSelectProvider } from "@/components/dialog-select-provider"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { DialogSelectServer } from "@/components/dialog-select-server"
+import { DialogSelectMcp } from "@/components/dialog-select-mcp"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
@@ -1127,11 +1128,22 @@ export default function Layout(props: ParentProps) {
             >
               <Show when={expanded()}>Open project</Show>
             </Button>
-          </Tooltip>
-          <Tooltip placement="right" value="Marketplace" inactive={expanded()}>
-            <Button
-              as={A}
-              href="/marketplace"
+            </Tooltip>
+            <Tooltip placement="right" value="MCP servers" inactive={expanded()}>
+              <Button
+                class="flex w-full text-left justify-start text-text-base stroke-[1.5px] rounded-lg px-2"
+                variant="ghost"
+                size="large"
+                icon="mcp"
+                onClick={() => dialog.show(() => <DialogSelectMcp />)}
+              >
+                <Show when={expanded()}>MCP servers</Show>
+              </Button>
+            </Tooltip>
+            <Tooltip placement="right" value="Marketplace" inactive={expanded()}>
+              <Button
+                as={A}
+                href="/marketplace"
               class="flex w-full text-left justify-start text-text-base stroke-[1.5px] rounded-lg px-2"
               variant="ghost"
               size="large"

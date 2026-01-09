@@ -19,6 +19,7 @@ import { BunProc } from "@/bun"
 import { Installation } from "@/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
+import { McpSync } from "@/mcp/sync"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -1179,7 +1180,12 @@ export namespace Config {
   export async function update(config: Info) {
     const filepath = path.join(Instance.directory, "config.json")
     const existing = await loadFile(filepath)
-    await Bun.write(filepath, JSON.stringify(mergeDeep(existing, config), null, 2))
+    const effective = mergeDeep(await get(), config)
+    const next = mergeDeep(existing, config)
+    await Bun.write(filepath, JSON.stringify(next, null, 2))
+    await McpSync.apply(effective.mcp, Instance.directory).catch((error) => {
+      log.warn("failed to sync mcp settings", { error: error instanceof Error ? error.message : String(error) })
+    })
     await Instance.dispose()
   }
 
