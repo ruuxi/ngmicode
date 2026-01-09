@@ -64,13 +64,13 @@ export function DialogConnectProvider(props: { provider: string }) {
   )
 
   // Fetch existing auth info for this provider
-  const [existingAuth, { refetch: refetchAuth }] = createResource(
+  const [existingAuth] = createResource(
     () => props.provider,
     async (providerId) => {
       const response = await fetch(`${globalSDK.url}/auth/${providerId}`)
       if (!response.ok) return null
       const data = await response.json()
-      return data as { type: string; masked?: string; key?: string } | null
+      return data as { type: string } | null
     },
   )
 
@@ -247,16 +247,9 @@ export function DialogConnectProvider(props: { provider: string }) {
                 const [formStore, setFormStore] = createStore({
                   value: "",
                   error: undefined as string | undefined,
-                  showKey: false,
                 })
 
-                const hasExistingKey = createMemo(() => existingAuth()?.type === "api" && existingAuth()?.masked)
-                const displayValue = createMemo(() => {
-                  if (formStore.value) return formStore.value
-                  if (hasExistingKey() && !formStore.showKey) return existingAuth()?.masked ?? ""
-                  if (hasExistingKey() && formStore.showKey) return existingAuth()?.key ?? ""
-                  return ""
-                })
+                const hasExistingKey = createMemo(() => existingAuth()?.type === "api")
 
                 async function handleSubmit(e: SubmitEvent) {
                   e.preventDefault()
@@ -318,26 +311,16 @@ export function DialogConnectProvider(props: { provider: string }) {
                       <div class="w-full flex items-end gap-2">
                         <TextField
                           autofocus={!hasExistingKey()}
-                          type={formStore.showKey || formStore.value ? "text" : "text"}
+                          type="text"
                           label={`${provider().name} API key`}
                           placeholder={hasExistingKey() ? "Enter new API key to replace" : "API key"}
                           name="apiKey"
-                          value={formStore.value || (hasExistingKey() ? displayValue() : "")}
+                          value={formStore.value}
                           onChange={(v) => setFormStore("value", v)}
                           validationState={formStore.error ? "invalid" : undefined}
                           error={formStore.error}
                           class="flex-1"
-                          readOnly={!!(hasExistingKey() && !formStore.value && !formStore.showKey)}
                         />
-                        <Show when={hasExistingKey() && !formStore.value}>
-                          <IconButton
-                            icon={formStore.showKey ? "eye-closed" : "eye"}
-                            variant="ghost"
-                            class="mb-0.5"
-                            onClick={() => setFormStore("showKey", !formStore.showKey)}
-                            title={formStore.showKey ? "Hide API key" : "Show API key"}
-                          />
-                        </Show>
                       </div>
                       <div class="flex items-center gap-3">
                         <Button class="w-auto" type="submit" size="large" variant="primary" disabled={!!(hasExistingKey() && !formStore.value)}>
