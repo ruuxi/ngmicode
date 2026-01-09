@@ -74,7 +74,7 @@ function ServerKey(props: ParentProps) {
   )
 }
 
-export function App() {
+export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Font />
@@ -85,48 +85,7 @@ export function App() {
               <DiffComponentProvider component={Diff}>
                 <CodeComponentProvider component={Code}>
                   <ServerProvider defaultUrl={defaultServerUrl}>
-                    <ServerKey>
-                      <GlobalSDKProvider>
-                        <GlobalSyncProvider>
-                          <Router
-                            root={(props) => (
-                              <PermissionProvider>
-                                <LayoutProvider>
-                                  <NotificationProvider>
-                                    <CommandProvider>
-                                      <VoiceProvider>
-                                        <Layout>{props.children}</Layout>
-                                      </VoiceProvider>
-                                    </CommandProvider>
-                                  </NotificationProvider>
-                                </LayoutProvider>
-                              </PermissionProvider>
-                            )}
-                          >
-                            <Route path="/" component={Home} />
-                            <Route path="/marketplace" component={Marketplace} />
-                            <Route path="/multi" component={MultiPanePage} />
-                            <Route path="/:dir" component={DirectoryLayout}>
-                              <Route path="/" component={() => <Navigate href="session" />} />
-                              <Route
-                                path="/session/:id?"
-                                component={(p) => (
-                                  <Show when={p.params.id ?? "new"} keyed>
-                                    <TerminalProvider>
-                                      <FileProvider>
-                                        <PromptProvider>
-                                          <Session />
-                                        </PromptProvider>
-                                      </FileProvider>
-                                    </TerminalProvider>
-                                  </Show>
-                                )}
-                              />
-                            </Route>
-                          </Router>
-                        </GlobalSyncProvider>
-                      </GlobalSDKProvider>
-                    </ServerKey>
+                    {props.children}
                   </ServerProvider>
                 </CodeComponentProvider>
               </DiffComponentProvider>
@@ -135,5 +94,60 @@ export function App() {
         </ErrorBoundary>
       </ThemeProvider>
     </MetaProvider>
+  )
+}
+
+export function AppInterface() {
+  return (
+    <ServerKey>
+      <GlobalSDKProvider>
+        <GlobalSyncProvider>
+          <Router
+            root={(props) => (
+              <PermissionProvider>
+                <LayoutProvider>
+                  <NotificationProvider>
+                    <CommandProvider>
+                      <VoiceProvider>
+                        <Layout>{props.children}</Layout>
+                      </VoiceProvider>
+                    </CommandProvider>
+                  </NotificationProvider>
+                </LayoutProvider>
+              </PermissionProvider>
+            )}
+          >
+            <Route path="/" component={Home} />
+            <Route path="/marketplace" component={Marketplace} />
+            <Route path="/multi" component={MultiPanePage} />
+            <Route path="/:dir" component={DirectoryLayout}>
+              <Route path="/" component={() => <Navigate href="session" />} />
+              <Route
+                path="/session/:id?"
+                component={(p) => (
+                  <Show when={p.params.id ?? "new"} keyed>
+                    <TerminalProvider>
+                      <FileProvider>
+                        <PromptProvider>
+                          <Session />
+                        </PromptProvider>
+                      </FileProvider>
+                    </TerminalProvider>
+                  </Show>
+                )}
+              />
+            </Route>
+          </Router>
+        </GlobalSyncProvider>
+      </GlobalSDKProvider>
+    </ServerKey>
+  )
+}
+
+export function App() {
+  return (
+    <AppBaseProviders>
+      <AppInterface />
+    </AppBaseProviders>
   )
 }
