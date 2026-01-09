@@ -13,7 +13,7 @@ import {
   type JSX,
 } from "solid-js"
 import { DateTime } from "luxon"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
@@ -47,6 +47,8 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
 import { Binary } from "@opencode-ai/util/binary"
+import { SDKProvider } from "@/context/sdk"
+import { SyncProvider } from "@/context/sync"
 
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
@@ -81,6 +83,7 @@ export default function Layout(props: ParentProps) {
   onCleanup(() => xlQuery.removeEventListener("change", handleViewportChange))
 
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const layout = useLayout()
@@ -100,6 +103,14 @@ export default function Layout(props: ParentProps) {
     light: "Light",
     dark: "Dark",
   }
+  const mcpDirectory = createMemo(() => {
+    if (params.dir) return base64Decode(params.dir)
+    const searchDir = searchParams.dir
+    if (searchDir) return Array.isArray(searchDir) ? searchDir[0] : searchDir
+    const first = layout.projects.list()[0]?.worktree
+    if (first) return first
+    return globalSync.data.path.directory
+  })
 
   function cycleTheme(direction = 1) {
     const ids = availableThemeEntries().map(([id]) => id)
@@ -517,6 +528,25 @@ export default function Layout(props: ParentProps) {
 
   function openServer() {
     dialog.show(() => <DialogSelectServer />)
+  }
+
+  function openMcp() {
+    const directory = mcpDirectory()
+    if (!directory) {
+      showToast({
+        variant: "error",
+        title: "Open a project",
+        description: "Open a project to manage MCP servers.",
+      })
+      return
+    }
+    dialog.show(() => (
+      <SDKProvider directory={directory}>
+        <SyncProvider>
+          <DialogSelectMcp />
+        </SyncProvider>
+      </SDKProvider>
+    ))
   }
 
   function navigateToProject(directory: string | undefined) {
@@ -1146,22 +1176,22 @@ export default function Layout(props: ParentProps) {
             >
               <Show when={expanded()}>Open project</Show>
             </Button>
-            </Tooltip>
-            <Tooltip placement="right" value="MCP servers" inactive={expanded()}>
-              <Button
-                class="flex w-full text-left justify-start text-text-base stroke-[1.5px] rounded-lg px-2"
-                variant="ghost"
-                size="large"
-                icon="mcp"
-                onClick={() => dialog.show(() => <DialogSelectMcp />)}
-              >
-                <Show when={expanded()}>MCP servers</Show>
-              </Button>
-            </Tooltip>
-            <Tooltip placement="right" value="Marketplace" inactive={expanded()}>
-              <Button
-                as={A}
-                href="/marketplace"
+          </Tooltip>
+          <Tooltip placement="right" value="MCP servers" inactive={expanded()}>
+            <Button
+              class="flex w-full text-left justify-start text-text-base stroke-[1.5px] rounded-lg px-2"
+              variant="ghost"
+              size="large"
+              icon="mcp"
+              onClick={openMcp}
+            >
+              <Show when={expanded()}>MCP servers</Show>
+            </Button>
+          </Tooltip>
+          <Tooltip placement="right" value="Marketplace" inactive={expanded()}>
+            <Button
+              as={A}
+              href="/marketplace"
               class="flex w-full text-left justify-start text-text-base stroke-[1.5px] rounded-lg px-2"
               variant="ghost"
               size="large"
