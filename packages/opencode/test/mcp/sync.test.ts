@@ -10,12 +10,12 @@ describe("McpSync", () => {
     await using tmp = await tmpdir()
     const mcp = {
       local: {
-        type: "local",
+        type: "local" as const,
         command: ["npx", "@playwright/mcp@latest"],
         environment: { FOO: "bar" },
       },
       remote: {
-        type: "remote",
+        type: "remote" as const,
         url: "https://example.com/mcp",
         headers: { Authorization: "Bearer token" },
       },
@@ -66,7 +66,7 @@ describe("McpSync", () => {
     await McpSync.apply(
       {
         local: {
-          type: "local",
+          type: "local" as const,
           command: ["node", "server.js"],
         },
       },
