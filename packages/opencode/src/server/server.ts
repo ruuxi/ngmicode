@@ -2804,20 +2804,18 @@ export namespace Server {
       .get(
         "/auth/:providerID",
         describeRoute({
-          summary: "Get auth credentials",
-          description: "Get authentication credentials for a provider (API key is masked)",
+          summary: "Get auth status",
+          description: "Get authentication status for a provider",
           operationId: "auth.get",
           responses: {
             200: {
-              description: "Auth credentials (masked)",
+              description: "Auth status",
               content: {
                 "application/json": {
                   schema: resolver(
                     z
                       .object({
                         type: z.enum(["api", "oauth", "wellknown"]),
-                        masked: z.string().optional(),
-                        key: z.string().optional(),
                       })
                       .optional(),
                   ),
@@ -2836,11 +2834,6 @@ export namespace Server {
           const providerID = c.req.valid("param").providerID
           const auth = await Auth.get(providerID)
           if (!auth) return c.json(null)
-          if (auth.type === "api") {
-            const key = auth.key
-            const masked = key.length > 8 ? key.slice(0, 4) + "•".repeat(key.length - 8) + key.slice(-4) : "•".repeat(key.length)
-            return c.json({ type: auth.type, masked, key })
-          }
           return c.json({ type: auth.type })
         },
       )
