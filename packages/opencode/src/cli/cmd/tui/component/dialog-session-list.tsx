@@ -25,8 +25,11 @@ export function DialogSessionList() {
 
   const [searchResults] = createResource(search, async (query) => {
     if (!query) return undefined
-    const result = await sdk.client.session.list({ search: query, limit: 30 })
-    return result.data ?? []
+    const result = await sdk.client.session.list({})
+    // Filter client-side since server doesn't support search param
+    const sessions = result.data ?? []
+    const lowerQuery = query.toLowerCase()
+    return sessions.filter((s) => s.title?.toLowerCase().includes(lowerQuery) || s.id.toLowerCase().includes(lowerQuery))
   })
 
   const deleteKeybind = "ctrl+d"

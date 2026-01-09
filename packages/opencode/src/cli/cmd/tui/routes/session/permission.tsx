@@ -165,11 +165,10 @@ export function PermissionPrompt(props: { request: PermissionRequest }) {
       </Match>
       <Match when={store.stage === "reject"}>
         <RejectPrompt
-          onConfirm={(message) => {
+          onConfirm={() => {
             sdk.client.permission.reply({
               reply: "reject",
               requestID: props.request.id,
-              message: message || undefined,
             })
           }}
           onCancel={() => setStore("stage", "permission")}

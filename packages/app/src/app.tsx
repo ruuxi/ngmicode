@@ -32,7 +32,7 @@ import { iife } from "@opencode-ai/util/iife"
 
 declare global {
   interface Window {
-    __OPENCODE__?: { updaterEnabled?: boolean; port?: number }
+    __OPENCODE__?: { updaterEnabled?: boolean; port?: number; serverReady?: boolean }
     __OPENCODE_SAFE_GET_COMPUTED_STYLE__?: boolean
   }
 }
