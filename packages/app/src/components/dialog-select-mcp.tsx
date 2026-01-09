@@ -1,6 +1,6 @@
 import { Component, createMemo, createSignal, Show } from "solid-js"
-import { useSync } from "@/context/sync"
-import { useSDK } from "@/context/sdk"
+import { SyncProvider, useSync } from "@/context/sync"
+import { SDKProvider, useSDK } from "@/context/sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
@@ -79,6 +79,24 @@ export const DialogSelectMcp: Component = () => {
 
   const enabledCount = createMemo(() => items().filter((i) => i.status === "connected").length)
   const totalCount = createMemo(() => items().length)
+  const showEdit = (name?: string, entry?: McpConfigured) => {
+    dialog.show(() => (
+      <SDKProvider directory={sdk.directory}>
+        <SyncProvider>
+          <DialogEditMcp name={name} entry={entry} />
+        </SyncProvider>
+      </SDKProvider>
+    ))
+  }
+  const showRemove = (name: string) => {
+    dialog.show(() => (
+      <SDKProvider directory={sdk.directory}>
+        <SyncProvider>
+          <DialogRemoveMcp name={name} />
+        </SyncProvider>
+      </SDKProvider>
+    ))
+  }
 
   return (
     <Dialog title="MCPs" description={`${enabledCount()} of ${totalCount()} enabled`}>
@@ -87,7 +105,7 @@ export const DialogSelectMcp: Component = () => {
         <Button
           size="small"
           icon="plus"
-          onClick={() => dialog.show(() => <DialogEditMcp />)}
+          onClick={() => showEdit()}
         >
           Add MCP
         </Button>
@@ -96,7 +114,7 @@ export const DialogSelectMcp: Component = () => {
         search={{ placeholder: "Search", autofocus: true }}
         emptyMessage="No MCPs configured"
         key={(x) => x?.name ?? ""}
-        items={items}
+        items={items()}
         filterKeys={["name", "status", "type"]}
         sortBy={(a, b) => a.name.localeCompare(b.name)}
         onSelect={(x) => {
@@ -149,12 +167,12 @@ export const DialogSelectMcp: Component = () => {
                 <IconButton
                   icon="edit-small-2"
                   variant="ghost"
-                  onClick={() => dialog.show(() => <DialogEditMcp name={i.name} entry={i.entry} />)}
+                  onClick={() => showEdit(i.name, i.entry)}
                 />
                 <IconButton
                   icon="circle-x"
                   variant="ghost"
-                  onClick={() => dialog.show(() => <DialogRemoveMcp name={i.name} />)}
+                  onClick={() => showRemove(i.name)}
                 />
                 <Switch checked={enabled()} disabled={loading() === i.name} onChange={() => toggle(i.name)} />
               </div>

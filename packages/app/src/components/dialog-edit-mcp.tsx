@@ -114,6 +114,7 @@ export const DialogEditMcp: Component<{ name?: string; entry?: McpConfigured }> 
       return
     }
 
+    sync.set("config", "mcp", result)
     showToast({
       variant: "success",
       title: "MCP saved",
@@ -347,6 +348,7 @@ export const DialogRemoveMcp: Component<{ name: string }> = (props) => {
       return
     }
 
+    sync.set("config", "mcp", result)
     showToast({
       variant: "success",
       title: "MCP removed",
