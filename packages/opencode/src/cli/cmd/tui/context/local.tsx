@@ -505,7 +505,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const available = agent.list()
       if (available.length === 0) return
       const current = agent.current()
-      if (available.some((item) => item.name === current.name)) return
+      if (current && available.some((item) => item.name === current.name)) return
       const preferred = mode.current().defaultAgent
       if (preferred && available.some((item) => item.name === preferred)) {
         agent.set(preferred)
@@ -517,6 +517,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     // Automatically update model when agent changes
     createEffect(() => {
       const value = agent.current()
+      if (!value) return
       if (value.model) {
         if (isModelValid(value.model))
           model.set({
