@@ -2,6 +2,7 @@ import { Component, Show, createMemo } from "solid-js"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { Dialog } from "@opencode-ai/ui/dialog"
+import { Icon } from "@opencode-ai/ui/icon"
 import { List } from "@opencode-ai/ui/list"
 import { Tag } from "@opencode-ai/ui/tag"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
@@ -12,6 +13,7 @@ export const DialogSelectProvider: Component = () => {
   const dialog = useDialog()
   const providers = useProviders()
   const providerItems = createMemo(() => providers.all().filter((provider) => provider.id !== "claude-agent"))
+  const connectedSet = createMemo(() => new Set(providers.connected().map((p) => p.id)))
 
   return (
     <Dialog title="Connect provider">
@@ -23,6 +25,10 @@ export const DialogSelectProvider: Component = () => {
         filterKeys={["id", "name"]}
         groupBy={(x) => (popularProviders.includes(x.id) ? "Popular" : "Other")}
         sortBy={(a, b) => {
+          const aConnected = connectedSet().has(a.id)
+          const bConnected = connectedSet().has(b.id)
+          if (aConnected && !bConnected) return -1
+          if (!aConnected && bConnected) return 1
           if (popularProviders.includes(a.id) && popularProviders.includes(b.id))
             return popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id)
           return a.name.localeCompare(b.name)
@@ -41,6 +47,9 @@ export const DialogSelectProvider: Component = () => {
           <div class="px-1.25 w-full flex items-center gap-x-3">
             <ProviderIcon data-slot="list-item-extra-icon" id={(i.id === "codex" ? "openai" : i.id) as IconName} />
             <span>{i.name}</span>
+            <Show when={connectedSet().has(i.id)}>
+              <Icon name="circle-check" class="size-4 text-icon-success-base" />
+            </Show>
             <Show when={i.id === "claude-agent"}>
               <Tag>Recommended</Tag>
             </Show>

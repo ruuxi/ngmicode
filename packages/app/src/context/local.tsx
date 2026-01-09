@@ -384,6 +384,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return map
       })
 
+      const userFavoriteSet = createMemo(() => {
+        const set = new Set<string>()
+        for (const item of store.user) {
+          if (item.favorite) set.add(`${item.providerID}:${item.modelID}`)
+        }
+        return set
+      })
+
       const list = createMemo(() =>
         available().map((m) => ({
           ...m,
@@ -511,6 +519,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         setVisibility(model: ModelKey, visible: boolean) {
           updateVisibility(model, visible ? "show" : "hide")
+        },
+        favorite(model: ModelKey) {
+          const key = `${model.providerID}:${model.modelID}`
+          return userFavoriteSet().has(key)
+        },
+        setFavorite(model: ModelKey, favorite: boolean) {
+          const index = store.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+          if (index >= 0) {
+            setStore("user", index, { favorite })
+          } else {
+            setStore("user", store.user.length, { ...model, visibility: "show", favorite })
+          }
+        },
+        toggleFavorite(model: ModelKey) {
+          const isFav = this.favorite(model)
+          this.setFavorite(model, !isFav)
         },
         variant: {
           current() {

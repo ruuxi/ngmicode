@@ -6,6 +6,7 @@ import { Switch } from "@opencode-ai/ui/switch"
 import { Tag } from "@opencode-ai/ui/tag"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLocal } from "@/context/local"
+import { useProviders } from "@/hooks/use-providers"
 import type { ModeDefinition } from "@/modes/types"
 import { DialogEditMode } from "./dialog-edit-mode"
 
@@ -87,7 +88,12 @@ const InstallModeDialog: Component<{ mode: ModeDefinition; onInstalled?: () => v
 export const MegaSelector: Component<{ class?: string }> = (props) => {
   const dialog = useDialog()
   const local = useLocal()
+  const providers = useProviders()
   const [open, setOpen] = createSignal(false)
+  const [modelSearch, setModelSearch] = createSignal("")
+  const [isSearching, setIsSearching] = createSignal(false)
+  const [selectedProvider, setSelectedProvider] = createSignal<string | undefined>(undefined)
+  const [showProviderFilter, setShowProviderFilter] = createSignal(false)
 
   const currentMode = createMemo(() => local.mode.current())
   const modes = createMemo(() => local.mode.list())
@@ -97,8 +103,9 @@ export const MegaSelector: Component<{ class?: string }> = (props) => {
   const isClaudeCodeMode = createMemo(() => currentMode()?.id === "claude-code")
   const isCodexMode = createMemo(() => currentMode()?.id === "codex")
   const isOhMyMode = createMemo(() => currentMode()?.id === "oh-my-opencode")
+  const isOpencodeMode = createMemo(() => currentMode()?.id === "opencode")
 
-  const models = createMemo(() =>
+  const baseModels = createMemo(() =>
     local.model
       .list()
       .filter((m) => {
@@ -115,6 +122,82 @@ export const MegaSelector: Component<{ class?: string }> = (props) => {
         return local.model.visible({ modelID: m.id, providerID: m.provider.id })
       }),
   )
+
+  // Get recent models (up to 5)
+  const recentModels = createMemo(() => local.model.recent().slice(0, 5))
+
+  // Get unique providers from available models (for opencode mode filter)
+  const availableProviders = createMemo(() => {
+    const providerMap = new Map<string, { id: string; name: string }>()
+    for (const m of baseModels()) {
+      if (!providerMap.has(m.provider.id)) {
+        providerMap.set(m.provider.id, { id: m.provider.id, name: m.provider.name })
+      }
+    }
+    return Array.from(providerMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  // Filter and sort models
+  const models = createMemo(() => {
+    let result = baseModels()
+
+    // Apply filters for opencode mode
+    if (isOpencodeMode()) {
+      // Provider filter
+      const providerFilter = selectedProvider()
+      if (providerFilter) {
+        result = result.filter((m) => m.provider.id === providerFilter)
+      }
+
+      // Search filter
+      const search = modelSearch().toLowerCase()
+      if (search) {
+        result = result.filter(
+          (m) =>
+            m.name.toLowerCase().includes(search) ||
+            m.id.toLowerCase().includes(search) ||
+            m.provider.name.toLowerCase().includes(search),
+        )
+      }
+    }
+
+    // Sort: favorites first, then recent, then alphabetical
+    if (isOpencodeMode()) {
+      const favSet = new Set<string>()
+      const recentSet = new Set<string>()
+
+      for (const m of result) {
+        if (local.model.favorite({ modelID: m.id, providerID: m.provider.id })) {
+          favSet.add(`${m.provider.id}:${m.id}`)
+        }
+      }
+
+      for (const r of recentModels()) {
+        if (!r) continue
+        const key = `${r.provider.id}:${r.id}`
+        if (!favSet.has(key)) {
+          recentSet.add(key)
+        }
+      }
+
+      result = result.slice().sort((a, b) => {
+        const aKey = `${a.provider.id}:${a.id}`
+        const bKey = `${b.provider.id}:${b.id}`
+        const aFav = favSet.has(aKey)
+        const bFav = favSet.has(bKey)
+        const aRecent = recentSet.has(aKey)
+        const bRecent = recentSet.has(bKey)
+
+        if (aFav && !bFav) return -1
+        if (!aFav && bFav) return 1
+        if (aRecent && !bRecent) return -1
+        if (!aRecent && bRecent) return 1
+        return a.name.localeCompare(b.name)
+      })
+    }
+
+    return result
+  })
 
   const currentModel = createMemo(() => local.model.current())
   const variants = createMemo(() => local.model.variant.list())
@@ -146,7 +229,7 @@ export const MegaSelector: Component<{ class?: string }> = (props) => {
         </Button>
       </Kobalte.Trigger>
       <Kobalte.Portal>
-        <Kobalte.Content class="w-[640px] h-64 rounded-md border border-border-base bg-surface-raised-stronger-non-alpha shadow-md z-50 outline-none overflow-hidden">
+        <Kobalte.Content class="w-[690px] h-64 rounded-md border border-border-base bg-surface-raised-stronger-non-alpha shadow-md z-50 outline-none overflow-hidden">
           <Kobalte.Title class="sr-only">Mode, Agent, and Model settings</Kobalte.Title>
 
           <div class="flex h-full">
@@ -208,8 +291,102 @@ export const MegaSelector: Component<{ class?: string }> = (props) => {
             </div>
 
             {/* MODEL COLUMN */}
-            <div class="flex flex-col p-2 border-r border-border-base w-[190px] shrink-0">
-              <div class="text-11-regular text-text-subtle px-1 pb-1 uppercase tracking-wider shrink-0">Model</div>
+            <div class="flex flex-col p-2 border-r border-border-base w-[240px] shrink-0">
+              {/* Header: MODEL text or search input */}
+              <Show
+                when={isOpencodeMode()}
+                fallback={
+                  <div class="text-11-regular text-text-subtle px-1 pb-1 uppercase tracking-wider shrink-0">Model</div>
+                }
+              >
+                <div class="flex items-center px-1 pb-1 shrink-0">
+                  <Show
+                    when={isSearching()}
+                    fallback={
+                      <button
+                        type="button"
+                        class="text-11-regular text-text-subtle uppercase tracking-wider flex-1 text-left hover:text-text-base cursor-text"
+                        onClick={() => setIsSearching(true)}
+                      >
+                        Model
+                      </button>
+                    }
+                  >
+                    <input
+                      ref={(el) => el.focus()}
+                      type="text"
+                      placeholder="Search..."
+                      value={modelSearch()}
+                      onInput={(e) => setModelSearch(e.currentTarget.value)}
+                      onBlur={() => {
+                        if (!modelSearch()) setIsSearching(false)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setModelSearch("")
+                          setIsSearching(false)
+                        }
+                      }}
+                      class="flex-1 min-w-0 text-11-regular bg-transparent placeholder:text-text-weak focus:outline-none"
+                    />
+                  </Show>
+                  <button
+                    type="button"
+                    class="p-0.5 rounded hover:bg-surface-raised-base-hover"
+                    onClick={() => {
+                      if (isSearching()) {
+                        setModelSearch("")
+                        setIsSearching(false)
+                      } else {
+                        setIsSearching(true)
+                      }
+                    }}
+                    title={isSearching() ? "Clear search" : "Search models"}
+                  >
+                    <Icon name={isSearching() ? "close" : "magnifying-glass"} size="small" class="text-icon-weak" />
+                  </button>
+                  <button
+                    type="button"
+                    class="p-0.5 rounded hover:bg-surface-raised-base-hover"
+                    classList={{ "text-icon-accent-base": !!selectedProvider() || showProviderFilter() }}
+                    onClick={() => setShowProviderFilter(!showProviderFilter())}
+                    title="Filter by provider"
+                  >
+                    <Icon name="chevron-down" size="small" classList={{ "text-icon-weak": !selectedProvider() && !showProviderFilter() }} />
+                  </button>
+                </div>
+                {/* Provider filter dropdown */}
+                <Show when={showProviderFilter()}>
+                  <div class="flex flex-col gap-0.5 pb-1 mb-1 border-b border-border-base max-h-32 overflow-y-auto">
+                    <button
+                      type="button"
+                      class="px-2 py-1 text-12-regular text-left rounded hover:bg-surface-raised-base-hover shrink-0"
+                      classList={{ "bg-surface-raised-base-hover text-text-strong": !selectedProvider() }}
+                      onClick={() => {
+                        setSelectedProvider(undefined)
+                        setShowProviderFilter(false)
+                      }}
+                    >
+                      All providers
+                    </button>
+                    <For each={availableProviders()}>
+                      {(provider) => (
+                        <button
+                          type="button"
+                          class="px-2 py-1 text-12-regular text-left rounded hover:bg-surface-raised-base-hover truncate shrink-0"
+                          classList={{ "bg-surface-raised-base-hover text-text-strong": selectedProvider() === provider.id }}
+                          onClick={() => {
+                            setSelectedProvider(provider.id)
+                            setShowProviderFilter(false)
+                          }}
+                        >
+                          {provider.name}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </Show>
               <Show
                 when={!isOhMyMode()}
                 fallback={
@@ -224,23 +401,57 @@ export const MegaSelector: Component<{ class?: string }> = (props) => {
                       const isCurrent = createMemo(
                         () => currentModel()?.id === model.id && currentModel()?.provider.id === model.provider.id,
                       )
+                      const isFavorite = createMemo(() =>
+                        local.model.favorite({ modelID: model.id, providerID: model.provider.id }),
+                      )
                       return (
-                        <button
-                          type="button"
-                          class="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-raised-base-hover text-left"
-                          classList={{ "bg-surface-raised-base-hover": isCurrent() }}
-                          onClick={() => {
-                            local.model.set({ modelID: model.id, providerID: model.provider.id }, { recent: true })
-                          }}
-                        >
-                          <span class="flex-1 text-13-regular text-text-strong truncate">{model.name}</span>
-                          <Show when={model.latest}>
-                            <Tag>Latest</Tag>
+                        <div class="group flex items-center">
+                          <button
+                            type="button"
+                            class="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-raised-base-hover text-left min-w-0"
+                            classList={{ "bg-surface-raised-base-hover": isCurrent() }}
+                            onClick={() => {
+                              local.model.set({ modelID: model.id, providerID: model.provider.id }, { recent: true })
+                            }}
+                          >
+                            <span class="flex-1 text-13-regular text-text-strong truncate">{model.name}</span>
+                            <Show when={model.latest}>
+                              <Tag>Latest</Tag>
+                            </Show>
+                          </button>
+                          <Show when={isOpencodeMode()}>
+                            <button
+                              type="button"
+                              class="p-1 rounded hover:bg-surface-raised-base-hover shrink-0"
+                              classList={{
+                                "opacity-0 group-hover:opacity-100": !isFavorite(),
+                                "opacity-100": isFavorite(),
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                local.model.toggleFavorite({ modelID: model.id, providerID: model.provider.id })
+                              }}
+                              title={isFavorite() ? "Remove from favorites" : "Add to favorites"}
+                            >
+                              <Icon
+                                name="check"
+                                size="small"
+                                classList={{
+                                  "text-icon-success-base": isFavorite(),
+                                  "text-icon-weak": !isFavorite(),
+                                }}
+                              />
+                            </button>
                           </Show>
-                        </button>
+                        </div>
                       )
                     }}
                   </For>
+                  <Show when={models().length === 0}>
+                    <div class="px-2 py-3 text-12-regular text-text-weak text-center">
+                      No models found
+                    </div>
+                  </Show>
                 </div>
               </Show>
             </div>
