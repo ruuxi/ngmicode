@@ -23,6 +23,8 @@ import { Env } from "@/env"
 import { $ } from "bun"
 import path from "path"
 import os from "os"
+import { Config } from "@/config/config"
+import { McpSync } from "@/mcp/sync"
 
 export namespace ClaudeAgentProcessor {
   const log = Log.create({ service: "claude-agent-processor" })
@@ -605,6 +607,27 @@ export namespace ClaudeAgentProcessor {
         envVars.ANTHROPIC_DEFAULT_HAIKU_MODEL = openRouterModelOverride
       }
 
+      const mcpServers = await Config.get()
+        .then((cfg) => McpSync.toExternalServers(cfg.mcp))
+        .catch(() => ({}))
+      const hasMcp = Object.keys(mcpServers).length > 0
+      const allowedTools = hasMcp
+        ? undefined
+        : [
+            "Read",
+            "Write",
+            "Edit",
+            "Bash",
+            "Glob",
+            "Grep",
+            "WebSearch",
+            "WebFetch",
+            "Task",
+            "TodoWrite",
+            "AskUserQuestion",
+            "ExitPlanMode",
+          ]
+
       const generator = query({
         prompt,
         options: {
@@ -621,20 +644,8 @@ export namespace ClaudeAgentProcessor {
           canUseTool: createCanUseTool(ctx),
           // Pass auth environment variables (OAuth token or API key, or OpenRouter config)
           env: envVars,
-          allowedTools: [
-            "Read",
-            "Write",
-            "Edit",
-            "Bash",
-            "Glob",
-            "Grep",
-            "WebSearch",
-            "WebFetch",
-            "Task",
-            "TodoWrite",
-            "AskUserQuestion",
-            "ExitPlanMode",
-          ],
+          mcpServers: hasMcp ? mcpServers : undefined,
+          allowedTools,
         },
       })
 
